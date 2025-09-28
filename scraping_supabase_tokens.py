@@ -2,10 +2,13 @@ import requests
 import time
 from datetime import datetime, timezone
 from supabase import create_client, Client
+import os
 
-# Supabase config
-SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"
+# === Variables d'environnement ===
+SUPABASE_URL = os.environ.get("https://mwnejkrkjlnrwrulqedd.supabase.co")
+SUPABASE_KEY = os.environ.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk")
+
+# Connexion Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Seuils minimum
@@ -69,7 +72,7 @@ def process_token(token):
     dex_url = token.get("url", "N/A")
     links = token.get("links", [])
 
-    pair_data = fetch_pair_data(adresse)
+    pair_data = fetch_price_data(adresse)  # corrige le nom ici
     if not pair_data:
         print(f"[SKIP] Pas de données de pair pour {adresse}")
         return
