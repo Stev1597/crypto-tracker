@@ -45,8 +45,13 @@ def get_old_price(token_address, minutes_ago):
             .order("created_at", desc=True) \
             .execute()
 
+        if not response.data or not isinstance(response.data, list):
+            return None
+
         now = datetime.now(timezone.utc)
         for record in response.data:
+            if not record:
+                continue
             created = datetime.fromisoformat(record["created_at"].replace("Z", "+00:00"))
             delta = (now - created).total_seconds() / 60
             if delta >= minutes_ago:
