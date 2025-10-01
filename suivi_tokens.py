@@ -1,6 +1,6 @@
 import requests
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from supabase import create_client, Client
 
 # Supabase credentials
@@ -8,7 +8,7 @@ SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Plages de variation en minutes
+# Plages de variation
 INTERVALS = {
     "var_5": 5,
     "var_15": 15,
@@ -21,7 +21,6 @@ INTERVALS = {
     "var_24h": 1440,
 }
 
-# Seuils
 SEUIL_MC = 20000
 SEUIL_LIQ = 5000
 
@@ -44,7 +43,7 @@ def get_old_price(token_address, minutes_ago):
             .eq("token_address", token_address) \
             .order("created_at", desc=True) \
             .execute()
-        
+
         now = datetime.now(timezone.utc)
         for record in response.data:
             created = datetime.fromisoformat(record["created_at"].replace("Z", "+00:00"))
@@ -108,12 +107,13 @@ def remove_token_completely(token_address):
 def track_token(token):
     token_address = token.get("token_address")
     raw_name = token.get("nom_jeton", "N/A")
-# Supprimer les sauts de ligne, espaces multiples, et couper à 60 caractères
-nom_jeton = ' '.join(raw_name.split()).strip()
-if len(nom_jeton) > 60:
-    nom_jeton = nom_jeton[:57] + "..."
 
-    # Vérifie dernier suivi pour éviter doublons
+    # Nettoyage du nom
+    nom_jeton = ' '.join(raw_name.split()).strip()
+    if len(nom_jeton) > 60:
+        nom_jeton = nom_jeton[:57] + "..."
+
+    # Vérifie doublon récent
     response = supabase.table("suivi_tokens") \
         .select("created_at") \
         .eq("token_address", token_address) \
@@ -147,7 +147,6 @@ if len(nom_jeton) > 60:
 
     now = datetime.now(timezone.utc).isoformat()
     variations = {}
-
     for var_col, minutes in INTERVALS.items():
         old_price = get_old_price(token_address, minutes)
         if old_price and old_price != 0:
@@ -176,14 +175,7 @@ if len(nom_jeton) > 60:
 def main():
     print("[SUIVI EN COURS]")
     start_time = time.time()
-
-    # Compteurs
-    counters = {
-        "suivi_ok": 0,
-        "ignored": 0,
-        "error": 0,
-        "removed": 0
-    }
+    counters = {"suivi_ok": 0, "ignored": 0, "error": 0, "removed": 0}
 
     try:
         response = supabase.table("tokens_detectes").select("*").execute()
@@ -194,11 +186,11 @@ def main():
     except Exception as e:
         print(f"[ERREUR FETCH TOKENS DETECTES] {e}")
 
-    # Résumé
     elapsed = round(time.time() - start_time, 2)
     print(f"[FIN DE CYCLE] ✅ Suivis: {counters['suivi_ok']} | ⏭️ Ignorés: {counters['ignored']} | ❌ Erreurs: {counters['error']} | 🗑️ Supprimés: {counters['removed']} | ⏱️ Temps: {elapsed} sec")
     print("[PAUSE] 5 minutes...\n")
 
+# Boucle principale
 while True:
     main()
     time.sleep(300)
