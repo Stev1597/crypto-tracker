@@ -5,7 +5,7 @@ from supabase import create_client, Client
 
 # Supabase credentials
 SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"  # raccourci ici
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Plages de variation en minutes
@@ -21,7 +21,7 @@ INTERVALS = {
     "var_24h": 1440,
 }
 
-# Seuils requis
+# Seuils
 SEUIL_MC = 20000
 SEUIL_LIQ = 5000
 
@@ -58,7 +58,6 @@ def get_old_price(token_address, minutes_ago):
 
 def should_remove_token(token_address):
     try:
-        # Market cap initial
         response_init = supabase.table("suivi_tokens") \
             .select("marketcap, created_at") \
             .eq("token_address", token_address) \
@@ -73,14 +72,12 @@ def should_remove_token(token_address):
         initial_mc = float(initial_data.get("marketcap", 0))
         created_at = datetime.fromisoformat(initial_data["created_at"].replace("Z", "+00:00"))
 
-        # Vérifier durée
         now = datetime.now(timezone.utc)
         age_days = (now - created_at).days
         if age_days >= 3 and initial_mc < SEUIL_MC:
             print(f"🕒 Token trop ancien et toujours sous les seuils : {token_address}")
             return True
 
-        # Vérifier chute de +70 %
         response_now = supabase.table("suivi_tokens") \
             .select("marketcap") \
             .eq("token_address", token_address) \
@@ -111,6 +108,24 @@ def remove_token_completely(token_address):
 def track_token(token):
     token_address = token.get("token_address")
     nom_jeton = token.get("nom_jeton", "N/A")
+
+    # ⏱️ Ne pas dupliquer si trop récent
+    try:
+        last_entry = supabase.table("suivi_tokens") \
+            .select("created_at") \
+            .eq("token_address", token_address) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if last_entry.data:
+            last_ts = datetime.fromisoformat(last_entry.data[0]["created_at"].replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            if (now - last_ts).total_seconds() < 240:
+                print(f"[IGNORÉ 🕒] Suivi trop récent pour {token_address}")
+                return
+    except Exception as e:
+        print(f"[ERREUR CHECK TEMPS] {e}")
 
     if should_remove_token(token_address):
         remove_token_completely(token_address)
@@ -156,14 +171,19 @@ def track_token(token):
         print(f"[ERREUR INSERT SUIVI] {e}")
 
 def main():
-    print("[SUIVI EN COURS]")
+    print("\\n[SUIVI EN COURS]")
+    start = time.time()
+    count = 0
     try:
         response = supabase.table("tokens_detectes").select("*").execute()
         for token in response.data:
             track_token(token)
+            count += 1
     except Exception as e:
         print(f"[ERREUR FETCH TOKENS DETECTES] {e}")
-    print("[PAUSE] 5 minutes...\n")
+    duration = round(time.time() - start, 2)
+    print(f"[FIN SUIVI] {count} tokens suivis en {duration} secondes.")
+    print("[PAUSE] 5 minutes...\\n")
 
 while True:
     main()
