@@ -171,20 +171,23 @@ def track_token(token):
         print(f"[ERREUR INSERT SUIVI] {e}")
 
 def main():
-    print("\\n[SUIVI EN COURS]")
+    print("\n[SUIVI EN COURS]")
     start = time.time()
     count = 0
     try:
         response = supabase.table("tokens_detectes").select("*").execute()
         for token in response.data:
-            track_token(token)
-            count += 1
+            try:
+                track_token(token)
+                count += 1
+            except Exception as e:
+                print(f"[ERREUR TRAITEMENT TOKEN INDIVIDUEL] {e}")
     except Exception as e:
         print(f"[ERREUR FETCH TOKENS DETECTES] {e}")
     duration = round(time.time() - start, 2)
     print(f"[FIN SUIVI] {count} tokens suivis en {duration} secondes.")
-    print("[PAUSE] 5 minutes...\\n")
-
+    print("[PAUSE] 5 minutes...\n")
+    
 while True:
     main()
     time.sleep(300)
