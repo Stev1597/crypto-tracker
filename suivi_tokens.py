@@ -44,14 +44,9 @@ def get_old_price(token_address, minutes_ago):
             .eq("token_address", token_address) \
             .order("created_at", desc=True) \
             .execute()
-
-        if not response.data or not isinstance(response.data, list):
-            return None
-
+        
         now = datetime.now(timezone.utc)
         for record in response.data:
-            if not record:
-                continue
             created = datetime.fromisoformat(record["created_at"].replace("Z", "+00:00"))
             delta = (now - created).total_seconds() / 60
             if delta >= minutes_ago:
@@ -80,7 +75,7 @@ def should_remove_token(token_address):
         now = datetime.now(timezone.utc)
         age_days = (now - created_at).days
         if age_days >= 3 and initial_mc < SEUIL_MC:
-            print(f"🕒 Token trop ancien et toujours sous les seuils : {token_address}")
+            print(f"[⏳] Token trop ancien et toujours sous les seuils : {token_address}")
             return True
 
         response_now = supabase.table("suivi_tokens") \
@@ -94,7 +89,7 @@ def should_remove_token(token_address):
         if initial_mc > 0:
             drop = ((initial_mc - current_mc) / initial_mc) * 100
             if drop >= 70:
-                print(f"📉 Token a chuté de plus de 70 % : {token_address}")
+                print(f"[📉] Token a chuté de +70% : {token_address}")
                 return True
 
         return False
@@ -106,40 +101,41 @@ def remove_token_completely(token_address):
     try:
         supabase.table("suivi_tokens").delete().eq("token_address", token_address).execute()
         supabase.table("tokens_detectes").delete().eq("token_address", token_address).execute()
-        print(f"🚫 Token supprimé : {token_address}")
+        print(f"[🚫] Token supprimé : {token_address}")
     except Exception as e:
         print(f"[ERREUR SUPPRESSION TOKEN] {e}")
 
 def track_token(token):
     token_address = token.get("token_address")
-    nom_jeton = token.get("nom_jeton", "N/A")
+    raw_name = token.get("nom_jeton", "N/A")
+# Supprimer les sauts de ligne, espaces multiples, et couper à 60 caractères
+nom_jeton = ' '.join(raw_name.split()).strip()
+if len(nom_jeton) > 60:
+    nom_jeton = nom_jeton[:57] + "..."
 
-    # ⏱️ Ne pas dupliquer si trop récent
-    try:
-        last_entry = supabase.table("suivi_tokens") \
-            .select("created_at") \
-            .eq("token_address", token_address) \
-            .order("created_at", desc=True) \
-            .limit(1) \
-            .execute()
+    # Vérifie dernier suivi pour éviter doublons
+    response = supabase.table("suivi_tokens") \
+        .select("created_at") \
+        .eq("token_address", token_address) \
+        .order("created_at", desc=True) \
+        .limit(1) \
+        .execute()
 
-        if last_entry.data:
-            last_ts = datetime.fromisoformat(last_entry.data[0]["created_at"].replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
-            if (now - last_ts).total_seconds() < 240:
-                print(f"[IGNORÉ 🕒] Suivi trop récent pour {token_address}")
-                return
-    except Exception as e:
-        print(f"[ERREUR CHECK TEMPS] {e}")
+    if response.data:
+        last_created = datetime.fromisoformat(response.data[0]["created_at"].replace("Z", "+00:00"))
+        delta_min = (datetime.now(timezone.utc) - last_created).total_seconds() / 60
+        if delta_min < 5:
+            print(f"[IGNORE] Suivi trop récent pour {token_address}")
+            return "ignored"
 
     if should_remove_token(token_address):
         remove_token_completely(token_address)
-        return
+        return "removed"
 
     data = fetch_price_data(token_address)
     if not data:
         print(f"[SKIP] Pas de données pour {token_address}")
-        return
+        return "error"
 
     try:
         price = float(data.get("priceUsd", 0))
@@ -147,7 +143,7 @@ def track_token(token):
         marketcap = float(data.get("fdv", 0))
     except:
         print(f"[ERREUR CONVERSION VALEURS] {token_address}")
-        return
+        return "error"
 
     now = datetime.now(timezone.utc).isoformat()
     variations = {}
@@ -172,27 +168,37 @@ def track_token(token):
     try:
         supabase.table("suivi_tokens").insert(suivi_data).execute()
         print(f"[SUIVI] {nom_jeton} ({token_address})")
+        return "suivi_ok"
     except Exception as e:
         print(f"[ERREUR INSERT SUIVI] {e}")
+        return "error"
 
 def main():
-    print("\n[SUIVI EN COURS]")
-    start = time.time()
-    count = 0
+    print("[SUIVI EN COURS]")
+    start_time = time.time()
+
+    # Compteurs
+    counters = {
+        "suivi_ok": 0,
+        "ignored": 0,
+        "error": 0,
+        "removed": 0
+    }
+
     try:
         response = supabase.table("tokens_detectes").select("*").execute()
         for token in response.data:
-            try:
-                track_token(token)
-                count += 1
-            except Exception as e:
-                print(f"[ERREUR TRAITEMENT TOKEN INDIVIDUEL] {e}")
+            result = track_token(token)
+            if result in counters:
+                counters[result] += 1
     except Exception as e:
         print(f"[ERREUR FETCH TOKENS DETECTES] {e}")
-    duration = round(time.time() - start, 2)
-    print(f"[FIN SUIVI] {count} tokens suivis en {duration} secondes.")
+
+    # Résumé
+    elapsed = round(time.time() - start_time, 2)
+    print(f"[FIN DE CYCLE] ✅ Suivis: {counters['suivi_ok']} | ⏭️ Ignorés: {counters['ignored']} | ❌ Erreurs: {counters['error']} | 🗑️ Supprimés: {counters['removed']} | ⏱️ Temps: {elapsed} sec")
     print("[PAUSE] 5 minutes...\n")
-    
+
 while True:
     main()
     time.sleep(300)
