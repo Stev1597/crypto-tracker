@@ -5,7 +5,7 @@ from supabase import create_client, Client
 
 # Supabase credentials
 SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Plages de variation
@@ -24,6 +24,7 @@ INTERVALS = {
 SEUIL_MC = 20000
 SEUIL_LIQ = 5000
 
+
 def fetch_price_data(token_address):
     url = f"https://api.dexscreener.com/latest/dex/search?q={token_address}"
     try:
@@ -35,6 +36,7 @@ def fetch_price_data(token_address):
     except Exception as e:
         print(f"[ERREUR FETCH PRIX] {e}")
         return None
+
 
 def get_old_price(token_address, minutes_ago):
     try:
@@ -55,8 +57,24 @@ def get_old_price(token_address, minutes_ago):
         print(f"[ERREUR OLD PRICE {minutes_ago}min] {e}")
         return None
 
+
 def should_remove_token(token_address):
     try:
+        # Vérifie si le token n’a pas été mis à jour depuis 3 jours
+        last_update = supabase.table("suivi_tokens") \
+            .select("created_at") \
+            .eq("token_address", token_address) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if last_update.data:
+            last_date = datetime.fromisoformat(last_update.data[0]["created_at"].replace("Z", "+00:00"))
+            if (datetime.now(timezone.utc) - last_date).days > 3:
+                print(f"[🕒] Pas de mise à jour depuis 3 jours : {token_address}")
+                return True
+
+        # Vérifie la chute de +70 %
         response_init = supabase.table("suivi_tokens") \
             .select("marketcap, created_at") \
             .eq("token_address", token_address) \
@@ -67,16 +85,7 @@ def should_remove_token(token_address):
         if not response_init.data:
             return False
 
-        initial_data = response_init.data[0]
-        initial_mc = float(initial_data.get("marketcap", 0))
-        created_at = datetime.fromisoformat(initial_data["created_at"].replace("Z", "+00:00"))
-
-        now = datetime.now(timezone.utc)
-        age_days = (now - created_at).days
-        if age_days >= 3 and initial_mc < SEUIL_MC:
-            print(f"[⏳] Token trop ancien et toujours sous les seuils : {token_address}")
-            return True
-
+        initial_mc = float(response_init.data[0].get("marketcap", 0))
         response_now = supabase.table("suivi_tokens") \
             .select("marketcap") \
             .eq("token_address", token_address) \
@@ -96,6 +105,7 @@ def should_remove_token(token_address):
         print(f"[ERREUR CHECK CHUTE] {e}")
         return False
 
+
 def remove_token_completely(token_address):
     try:
         supabase.table("suivi_tokens").delete().eq("token_address", token_address).execute()
@@ -104,16 +114,17 @@ def remove_token_completely(token_address):
     except Exception as e:
         print(f"[ERREUR SUPPRESSION TOKEN] {e}")
 
+
 def track_token(token):
     token_address = token.get("token_address")
     raw_name = token.get("nom_jeton", "N/A")
 
-    # Nettoyage du nom
+    # Nettoyage du nom (compact et coupé à 60 caractères max)
     nom_jeton = ' '.join(raw_name.split()).strip()
     if len(nom_jeton) > 60:
         nom_jeton = nom_jeton[:57] + "..."
 
-    # Vérifie doublon récent
+    # Vérifie doublon récent (< 5 min)
     response = supabase.table("suivi_tokens") \
         .select("created_at") \
         .eq("token_address", token_address) \
@@ -172,6 +183,7 @@ def track_token(token):
         print(f"[ERREUR INSERT SUIVI] {e}")
         return "error"
 
+
 def main():
     print("[SUIVI EN COURS]")
     start_time = time.time()
@@ -183,14 +195,16 @@ def main():
             result = track_token(token)
             if result in counters:
                 counters[result] += 1
+            time.sleep(0.5)  # Petite pause pour éviter surcharge API
     except Exception as e:
         print(f"[ERREUR FETCH TOKENS DETECTES] {e}")
 
     elapsed = round(time.time() - start_time, 2)
     print(f"[FIN DE CYCLE] ✅ Suivis: {counters['suivi_ok']} | ⏭️ Ignorés: {counters['ignored']} | ❌ Erreurs: {counters['error']} | 🗑️ Supprimés: {counters['removed']} | ⏱️ Temps: {elapsed} sec")
-    print("[PAUSE] 5 minutes...\n")
+    print("[PAUSE] 60 secondes...\n")
 
-# Boucle principale
+
+# Lancement en boucle toutes les minutes
 while True:
     main()
-    time.sleep(300)
+    time.sleep(60)
