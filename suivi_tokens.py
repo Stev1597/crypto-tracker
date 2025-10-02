@@ -5,7 +5,7 @@ from supabase import create_client, Client
 
 # Supabase credentials
 SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # Mets ta clé complète ici
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Plages de variation
@@ -24,19 +24,34 @@ INTERVALS = {
 SEUIL_MC = 20000
 SEUIL_LIQ = 5000
 
-
 def fetch_price_data(token_address):
     url = f"https://api.dexscreener.com/latest/dex/search?q={token_address}"
     try:
         response = requests.get(url, timeout=10)
+
+        if response.status_code == 429:
+            print(f"[⚠️ LIMITÉ PAR L'API] Trop de requêtes. Pause de 30 sec...")
+            time.sleep(30)
+            return None
+
+        if response.status_code != 200:
+            print(f"[ERREUR HTTP] Code: {response.status_code} pour {token_address}")
+            return None
+
+        if not response.content:
+            print(f"[ERREUR VIDE] Réponse vide pour {token_address}")
+            return None
+
         data = response.json()
         if not data.get("pairs"):
+            print(f"[⚠️] Aucun pair retourné pour {token_address}")
             return None
+
         return data["pairs"][0]
+
     except Exception as e:
         print(f"[ERREUR FETCH PRIX] {e}")
         return None
-
 
 def get_old_price(token_address, minutes_ago):
     try:
@@ -57,10 +72,9 @@ def get_old_price(token_address, minutes_ago):
         print(f"[ERREUR OLD PRICE {minutes_ago}min] {e}")
         return None
 
-
 def should_remove_token(token_address):
     try:
-        # Vérifie si le token n’a pas été mis à jour depuis 3 jours
+        # Supprimer si aucune mise à jour depuis 3 jours
         last_update = supabase.table("suivi_tokens") \
             .select("created_at") \
             .eq("token_address", token_address) \
@@ -74,7 +88,7 @@ def should_remove_token(token_address):
                 print(f"[🕒] Pas de mise à jour depuis 3 jours : {token_address}")
                 return True
 
-        # Vérifie la chute de +70 %
+        # Supprimer si chute de 70 %
         response_init = supabase.table("suivi_tokens") \
             .select("marketcap, created_at") \
             .eq("token_address", token_address) \
@@ -105,7 +119,6 @@ def should_remove_token(token_address):
         print(f"[ERREUR CHECK CHUTE] {e}")
         return False
 
-
 def remove_token_completely(token_address):
     try:
         supabase.table("suivi_tokens").delete().eq("token_address", token_address).execute()
@@ -114,17 +127,16 @@ def remove_token_completely(token_address):
     except Exception as e:
         print(f"[ERREUR SUPPRESSION TOKEN] {e}")
 
-
 def track_token(token):
     token_address = token.get("token_address")
     raw_name = token.get("nom_jeton", "N/A")
 
-    # Nettoyage du nom (compact et coupé à 60 caractères max)
+    # Nettoyage du nom
     nom_jeton = ' '.join(raw_name.split()).strip()
     if len(nom_jeton) > 60:
         nom_jeton = nom_jeton[:57] + "..."
 
-    # Vérifie doublon récent (< 5 min)
+    # Évite le suivi si déjà fait < 5 min
     response = supabase.table("suivi_tokens") \
         .select("created_at") \
         .eq("token_address", token_address) \
@@ -183,7 +195,6 @@ def track_token(token):
         print(f"[ERREUR INSERT SUIVI] {e}")
         return "error"
 
-
 def main():
     print("[SUIVI EN COURS]")
     start_time = time.time()
@@ -195,7 +206,7 @@ def main():
             result = track_token(token)
             if result in counters:
                 counters[result] += 1
-            time.sleep(0.5)  # Petite pause pour éviter surcharge API
+            time.sleep(0.5)  # Pause entre chaque token
     except Exception as e:
         print(f"[ERREUR FETCH TOKENS DETECTES] {e}")
 
@@ -203,8 +214,7 @@ def main():
     print(f"[FIN DE CYCLE] ✅ Suivis: {counters['suivi_ok']} | ⏭️ Ignorés: {counters['ignored']} | ❌ Erreurs: {counters['error']} | 🗑️ Supprimés: {counters['removed']} | ⏱️ Temps: {elapsed} sec")
     print("[PAUSE] 60 secondes...\n")
 
-
-# Lancement en boucle toutes les minutes
+# Boucle infinie
 while True:
     main()
     time.sleep(60)
