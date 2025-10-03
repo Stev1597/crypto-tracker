@@ -5,7 +5,7 @@ from supabase import create_client, Client
 
 # Supabase credentials
 SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"  # Mets ta clé complète ici
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # Remplis bien avec ta clé complète
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Plages de variation
@@ -21,8 +21,10 @@ INTERVALS = {
     "var_24h": 1440,
 }
 
+# Seuils minimaux pour être suivis
 SEUIL_MC = 20000
 SEUIL_LIQ = 5000
+
 
 def fetch_price_data(token_address):
     url = f"https://api.dexscreener.com/latest/dex/search?q={token_address}"
@@ -53,6 +55,7 @@ def fetch_price_data(token_address):
         print(f"[ERREUR FETCH PRIX] {e}")
         return None
 
+
 def get_old_price(token_address, minutes_ago):
     try:
         response = supabase.table("suivi_tokens") \
@@ -71,6 +74,7 @@ def get_old_price(token_address, minutes_ago):
     except Exception as e:
         print(f"[ERREUR OLD PRICE {minutes_ago}min] {e}")
         return None
+
 
 def should_remove_token(token_address):
     try:
@@ -92,7 +96,7 @@ def should_remove_token(token_address):
         response_init = supabase.table("suivi_tokens") \
             .select("marketcap, created_at") \
             .eq("token_address", token_address) \
-            .order("created_at", desc=False) \
+            .order("created_at", asc=True) \
             .limit(1) \
             .execute()
 
@@ -119,6 +123,7 @@ def should_remove_token(token_address):
         print(f"[ERREUR CHECK CHUTE] {e}")
         return False
 
+
 def remove_token_completely(token_address):
     try:
         supabase.table("suivi_tokens").delete().eq("token_address", token_address).execute()
@@ -126,6 +131,7 @@ def remove_token_completely(token_address):
         print(f"[🚫] Token supprimé : {token_address}")
     except Exception as e:
         print(f"[ERREUR SUPPRESSION TOKEN] {e}")
+
 
 def track_token(token):
     token_address = token.get("token_address")
@@ -155,6 +161,7 @@ def track_token(token):
         remove_token_completely(token_address)
         return "removed"
 
+    # 🟡 → Récupération des données prix/liquidité/marketcap
     data = fetch_price_data(token_address)
     if not data:
         print(f"[SKIP] Pas de données pour {token_address}")
@@ -167,6 +174,11 @@ def track_token(token):
     except:
         print(f"[ERREUR CONVERSION VALEURS] {token_address}")
         return "error"
+
+    # 🔴 → Si en-dessous des seuils, on ignore !
+    if marketcap < SEUIL_MC or liquidity < SEUIL_LIQ:
+        print(f"[IGNORÉ - SOUS SEUIL] {token_address} | MC: {marketcap} | LIQ: {liquidity}")
+        return "ignored"
 
     now = datetime.now(timezone.utc).isoformat()
     variations = {}
@@ -195,6 +207,7 @@ def track_token(token):
         print(f"[ERREUR INSERT SUIVI] {e}")
         return "error"
 
+
 def main():
     print("[SUIVI EN COURS]")
     start_time = time.time()
@@ -206,13 +219,14 @@ def main():
             result = track_token(token)
             if result in counters:
                 counters[result] += 1
-            time.sleep(0.5)  # Pause entre chaque token
+            time.sleep(0.5)
     except Exception as e:
         print(f"[ERREUR FETCH TOKENS DETECTES] {e}")
 
     elapsed = round(time.time() - start_time, 2)
     print(f"[FIN DE CYCLE] ✅ Suivis: {counters['suivi_ok']} | ⏭️ Ignorés: {counters['ignored']} | ❌ Erreurs: {counters['error']} | 🗑️ Supprimés: {counters['removed']} | ⏱️ Temps: {elapsed} sec")
     print("[PAUSE] 60 secondes...\n")
+
 
 # Boucle infinie
 while True:
