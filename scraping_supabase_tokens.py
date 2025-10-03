@@ -12,6 +12,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 LIQUIDITY_MIN = 5000
 MARKETCAP_MIN = 20000
 
+
 def get_existing_tokens():
     try:
         response = supabase.table("tokens_detectes").select("token_address").execute()
@@ -20,10 +21,21 @@ def get_existing_tokens():
         print(f"[ERREUR RECUP TOKEN] {e}")
         return set()
 
+
 def fetch_price_data(token_address):
     url = f"https://api.dexscreener.com/latest/dex/search?q={token_address}"
     try:
         response = requests.get(url, timeout=10)
+
+        if response.status_code == 429:
+            print(f"[⚠️ LIMITÉ PAR L'API] Pause 30 sec...")
+            time.sleep(30)
+            return None
+
+        if response.status_code != 200:
+            print(f"[ERREUR HTTP {response.status_code}] pour {token_address}")
+            return None
+
         data = response.json()
         pairs = data.get("pairs", [])
 
@@ -38,6 +50,7 @@ def fetch_price_data(token_address):
         print(f"[ERREUR FETCH PRIX] {e}")
         return None
 
+
 def has_x_account(links):
     if not links:
         return False
@@ -46,6 +59,7 @@ def has_x_account(links):
             return True
     return False
 
+
 def insert_detected_token(token_data):
     try:
         supabase.table("tokens_detectes").insert(token_data).execute()
@@ -53,12 +67,14 @@ def insert_detected_token(token_data):
     except Exception as e:
         print(f"[ERREUR INSERT token_detectes] {e}")
 
+
 def insert_valid_token(token_data):
     try:
         supabase.table("tokens_valides").insert(token_data).execute()
         print(f"[VALIDÉ ✅] {token_data['token_address']}")
     except Exception as e:
         print(f"[ERREUR INSERT token_valides] {e}")
+
 
 def process_token(token):
     if token.get("chainId") != "solana":
@@ -79,7 +95,7 @@ def process_token(token):
     has_x = has_x_account(links)
 
     # ⚠️ FILTRAGE : ne garde que les tokens solides
-    if liquidity < LIQUIDITY_MIN or marketcap < MARKETCAP_MIN or not has_x:
+    if not (liquidity >= LIQUIDITY_MIN and marketcap >= MARKETCAP_MIN and has_x):
         print(f"[IGNORÉ ❌] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
         return
 
@@ -96,6 +112,7 @@ def process_token(token):
 
     insert_detected_token(token_data)
     insert_valid_token(token_data)
+
 
 def get_solana_tokens():
     url = "https://api.dexscreener.com/token-profiles/latest/v1"
@@ -117,6 +134,39 @@ def get_solana_tokens():
 
     except Exception as e:
         print(f"[ERREUR GET SOLANA TOKENS] {e}")
+
+
+# 🔥 Fonction de nettoyage ponctuelle
+def nettoyer_tokens():
+    """
+    Supprime tous les tokens des deux tables
+    qui ne respectent plus les seuils (MC/LIQ/X)
+    """
+    try:
+        # Récupérer tous les tokens détectés
+        response = supabase.table("tokens_detectes").select("*").execute()
+        if not response.data:
+            print("[NETTOYAGE] Aucun token à vérifier.")
+            return
+
+        for item in response.data:
+            mc = float(item.get("marketcap", 0))
+            liq = float(item.get("liquidite", 0))
+            has_x = item.get("has_x_account", False)
+            token_address = item.get("token_address")
+
+            if not (mc >= MARKETCAP_MIN and liq >= LIQUIDITY_MIN and has_x):
+                supabase.table("tokens_detectes").delete().eq("token_address", token_address).execute()
+                supabase.table("tokens_valides").delete().eq("token_address", token_address).execute()
+                print(f"[NETTOYÉ 🗑️] {token_address}")
+
+    except Exception as e:
+        print(f"[ERREUR NETTOYAGE] {e}")
+
+
+# ⚠️ Appel ponctuel du nettoyage
+# (Décommente cette ligne si tu veux nettoyer une fois au démarrage)
+ nettoyer_tokens()
 
 # Boucle toutes les 5 minutes
 while True:
