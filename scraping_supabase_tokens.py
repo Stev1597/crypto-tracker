@@ -2,16 +2,15 @@ import requests
 import time
 from datetime import datetime, timezone
 from supabase import create_client, Client
-import os
 
 # Supabase config
 SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Seuils minimum
-LIQUIDITY_MIN = 500
-MARKETCAP_MIN = 5000
+# Seuils stricts requis
+LIQUIDITY_MIN = 5000
+MARKETCAP_MIN = 20000
 
 def get_existing_tokens():
     try:
@@ -28,13 +27,13 @@ def fetch_price_data(token_address):
         data = response.json()
         pairs = data.get("pairs", [])
 
-        # Prioriser PumpSwap et Raydium uniquement
+        # Prioriser PumpSwap et Raydium
         for pair in pairs:
             dex_id = pair.get("dexId", "").lower()
             if dex_id in ["pumpswap", "raydium"]:
-                return pair  # Retourne la première paire valide
+                return pair
 
-        return None  # Aucune paire valide trouvée
+        return None
     except Exception as e:
         print(f"[ERREUR FETCH PRIX] {e}")
         return None
@@ -52,7 +51,7 @@ def insert_detected_token(token_data):
         supabase.table("tokens_detectes").insert(token_data).execute()
         print(f"[INSÉRÉ ✅] {token_data['token_address']}")
     except Exception as e:
-        print(f"[ERREUR INSERT token_detected] {e}")
+        print(f"[ERREUR INSERT token_detectes] {e}")
 
 def insert_valid_token(token_data):
     try:
@@ -65,33 +64,32 @@ def process_token(token):
     if token.get("chainId") != "solana":
         return
 
-    adresse = token.get("tokenAddress")
-    nom = token.get("description", "N/A")
+    address = token.get("tokenAddress")
+    name = token.get("description", "N/A")
     dex_url = token.get("url", "N/A")
     links = token.get("links", [])
 
-    pair_data = fetch_price_data(adresse)  # corrige le nom ici
+    pair_data = fetch_price_data(address)
     if not pair_data:
-        print(f"[SKIP] Pas de données de pair pour {adresse}")
+        print(f"[SKIP] Pas de données de pair pour {address}")
         return
 
-    liquidite = float(pair_data.get("liquidity", {}).get("usd", 0))
+    liquidity = float(pair_data.get("liquidity", {}).get("usd", 0))
     marketcap = float(pair_data.get("fdv", 0))
     has_x = has_x_account(links)
 
-    # Filtrage AVANT toute insertion
-    if liquidite < LIQUIDITY_MIN or marketcap < MARKETCAP_MIN or not has_x:
-        print(f"[IGNORÉ ❌] {adresse} - Liquidité: {liquidite} | MarketCap: {marketcap} | Compte X: {has_x}")
+    # ⚠️ FILTRAGE : ne garde que les tokens solides
+    if liquidity < LIQUIDITY_MIN or marketcap < MARKETCAP_MIN or not has_x:
+        print(f"[IGNORÉ ❌] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
         return
 
     now = datetime.now(timezone.utc).isoformat()
-
     token_data = {
-        "nom_jeton": nom,
-        "token_address": adresse,
+        "nom_jeton": name,
+        "token_address": address,
         "dex_url": dex_url,
         "created_at": now,
-        "liquidite": liquidite,
+        "liquidite": liquidity,
         "marketcap": marketcap,
         "has_x_account": has_x
     }
@@ -108,14 +106,13 @@ def get_solana_tokens():
             return
 
         data = response.json()
-        tokens_existants = get_existing_tokens()
+        existing = get_existing_tokens()
 
         for token in data:
-            adresse = token.get("tokenAddress")
-            if not adresse or adresse in tokens_existants:
+            address = token.get("tokenAddress")
+            if not address or address in existing:
                 continue
-
-            print(f"[NOUVEAU TOKEN] {adresse}")
+            print(f"[NOUVEAU TOKEN] {address}")
             process_token(token)
 
     except Exception as e:
