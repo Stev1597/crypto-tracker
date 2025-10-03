@@ -166,7 +166,7 @@ def nettoyer_tokens():
 
 # ⚠️ Appel ponctuel du nettoyage
 # (Décommente cette ligne si tu veux nettoyer une fois au démarrage)
- nettoyer_tokens()
+nettoyer_tokens()
 
 # Boucle toutes les 5 minutes
 while True:
