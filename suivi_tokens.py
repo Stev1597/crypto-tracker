@@ -5,7 +5,7 @@ from supabase import create_client, Client
 
 # Supabase credentials
 SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"  # Remplis bien avec ta clé complète
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Plages de variation
@@ -25,14 +25,13 @@ INTERVALS = {
 SEUIL_MC = 20000
 SEUIL_LIQ = 5000
 
-
 def fetch_price_data(token_address):
     url = f"https://api.dexscreener.com/latest/dex/search?q={token_address}"
     try:
         response = requests.get(url, timeout=10)
 
         if response.status_code == 429:
-            print(f"[⚠️ LIMITÉ PAR L'API] Trop de requêtes. Pause de 30 sec...")
+            print(f"[⚠️ LIMITÉ PAR L'API] Trop de requêtes. Pause de 30 sec…")
             time.sleep(30)
             return None
 
@@ -55,7 +54,6 @@ def fetch_price_data(token_address):
         print(f"[ERREUR FETCH PRIX] {e}")
         return None
 
-
 def get_old_price(token_address, minutes_ago):
     try:
         response = supabase.table("suivi_tokens") \
@@ -75,7 +73,6 @@ def get_old_price(token_address, minutes_ago):
         print(f"[ERREUR OLD PRICE {minutes_ago}min] {e}")
         return None
 
-
 def should_remove_token(token_address):
     try:
         # Supprimer si aucune mise à jour depuis 3 jours
@@ -92,37 +89,38 @@ def should_remove_token(token_address):
                 print(f"[🕒] Pas de mise à jour depuis 3 jours : {token_address}")
                 return True
 
-        # Supprimer si chute de 70 %
-        response_init = supabase.table("suivi_tokens") \
-            .select("marketcap, created_at") \
+        # ➡️ Chute de 70 % calculée par rapport au marketcap max
+        max_mc_resp = supabase.table("suivi_tokens") \
+            .select("marketcap") \
             .eq("token_address", token_address) \
-            .order("created_at", asc=True) \
+            .order("marketcap", desc=True) \
             .limit(1) \
             .execute()
 
-        if not response_init.data:
+        if not max_mc_resp.data:
             return False
 
-        initial_mc = float(response_init.data[0].get("marketcap", 0))
-        response_now = supabase.table("suivi_tokens") \
+        max_mc = float(max_mc_resp.data[0].get("marketcap", 0))
+
+        current_mc_resp = supabase.table("suivi_tokens") \
             .select("marketcap") \
             .eq("token_address", token_address) \
             .order("created_at", desc=True) \
             .limit(1) \
             .execute()
 
-        current_mc = float(response_now.data[0].get("marketcap", 0))
-        if initial_mc > 0:
-            drop = ((initial_mc - current_mc) / initial_mc) * 100
+        current_mc = float(current_mc_resp.data[0].get("marketcap", 0))
+
+        if max_mc > 0:
+            drop = ((max_mc - current_mc) / max_mc) * 100
             if drop >= 70:
-                print(f"[📉] Token a chuté de +70% : {token_address}")
+                print(f"[📉] Token a chuté de +70% (par rapport au max) : {token_address}")
                 return True
 
         return False
     except Exception as e:
         print(f"[ERREUR CHECK CHUTE] {e}")
         return False
-
 
 def remove_token_completely(token_address):
     try:
@@ -131,7 +129,6 @@ def remove_token_completely(token_address):
         print(f"[🚫] Token supprimé : {token_address}")
     except Exception as e:
         print(f"[ERREUR SUPPRESSION TOKEN] {e}")
-
 
 def track_token(token):
     token_address = token.get("token_address")
@@ -175,8 +172,8 @@ def track_token(token):
         print(f"[ERREUR CONVERSION VALEURS] {token_address}")
         return "error"
 
-    # 🔴 → Si en-dessous des seuils, on ignore !
-    if marketcap < SEUIL_MC or liquidity < SEUIL_LIQ:
+    # 🔴 → Filtre strict : on ne suit QUE si MC >= 20 000 ET LIQ >= 5 000
+    if not (marketcap >= SEUIL_MC and liquidity >= SEUIL_LIQ):
         print(f"[IGNORÉ - SOUS SEUIL] {token_address} | MC: {marketcap} | LIQ: {liquidity}")
         return "ignored"
 
@@ -207,7 +204,6 @@ def track_token(token):
         print(f"[ERREUR INSERT SUIVI] {e}")
         return "error"
 
-
 def main():
     print("[SUIVI EN COURS]")
     start_time = time.time()
@@ -225,10 +221,9 @@ def main():
 
     elapsed = round(time.time() - start_time, 2)
     print(f"[FIN DE CYCLE] ✅ Suivis: {counters['suivi_ok']} | ⏭️ Ignorés: {counters['ignored']} | ❌ Erreurs: {counters['error']} | 🗑️ Supprimés: {counters['removed']} | ⏱️ Temps: {elapsed} sec")
-    print("[PAUSE] 60 secondes...\n")
-
+    print("[PAUSE] 5 minutes…\n")
 
 # Boucle infinie
 while True:
     main()
-    time.sleep(60)
+    time.sleep(300)
