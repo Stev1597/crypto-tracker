@@ -21,7 +21,7 @@ INTERVALS = {
     "var_24h": 1440,
 }
 
-# Seuils minimaux pour être suivis
+# Seuils minimaux
 SEUIL_MC = 20000
 SEUIL_LIQ = 5000
 
@@ -89,7 +89,7 @@ def should_remove_token(token_address):
                 print(f"[🕒] Pas de mise à jour depuis 3 jours : {token_address}")
                 return True
 
-        # ➡️ Chute de 70 % calculée par rapport au marketcap max
+        # Supprimer si chute > 70% par rapport au marketcap max
         max_mc_resp = supabase.table("suivi_tokens") \
             .select("marketcap") \
             .eq("token_address", token_address) \
@@ -154,11 +154,7 @@ def track_token(token):
             print(f"[IGNORE] Suivi trop récent pour {token_address}")
             return "ignored"
 
-    if should_remove_token(token_address):
-        remove_token_completely(token_address)
-        return "removed"
-
-    # 🟡 → Récupération des données prix/liquidité/marketcap
+    # ❗ Suppression si token sous les seuils ACTUELLEMENT
     data = fetch_price_data(token_address)
     if not data:
         print(f"[SKIP] Pas de données pour {token_address}")
@@ -172,10 +168,15 @@ def track_token(token):
         print(f"[ERREUR CONVERSION VALEURS] {token_address}")
         return "error"
 
-    # 🔴 → Filtre strict : on ne suit QUE si MC >= 20 000 ET LIQ >= 5 000
-    if not (marketcap >= SEUIL_MC and liquidity >= SEUIL_LIQ):
-        print(f"[IGNORÉ - SOUS SEUIL] {token_address} | MC: {marketcap} | LIQ: {liquidity}")
-        return "ignored"
+    if marketcap < SEUIL_MC or liquidity < SEUIL_LIQ:
+        print(f"[SUPPRESSION AUTO - SOUS SEUIL] {token_address} | MC: {marketcap} | LIQ: {liquidity}")
+        remove_token_completely(token_address)
+        return "removed"
+
+    # Suppression si absence de mise à jour ou chute > 70%
+    if should_remove_token(token_address):
+        remove_token_completely(token_address)
+        return "removed"
 
     now = datetime.now(timezone.utc).isoformat()
     variations = {}
