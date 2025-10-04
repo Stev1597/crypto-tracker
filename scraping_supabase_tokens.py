@@ -138,34 +138,26 @@ def get_solana_tokens():
 
 # 🔥 Fonction de nettoyage ponctuelle
 def nettoyer_tokens():
-    """
-    Supprime tous les tokens des deux tables
-    qui ne respectent plus les seuils (MC/LIQ/X)
-    """
+    print("\n[NETTOYAGE EN COURS...]")
     try:
-        # Récupérer tous les tokens détectés
-        response = supabase.table("tokens_detectes").select("*").execute()
-        if not response.data:
-            print("[NETTOYAGE] Aucun token à vérifier.")
-            return
+        tokens = supabase.table("tokens_detectes").select("token_address, links").execute().data
+        for token in tokens:
+            address = token.get("token_address")
+            links = token.get("links", [])
+            pair_data = fetch_price_data(address)
+            if not pair_data:
+                continue
 
-        for item in response.data:
-            mc = float(item.get("marketcap", 0))
-            liq = float(item.get("liquidite", 0))
-            has_x = item.get("has_x_account", False)
-            token_address = item.get("token_address")
+            liquidity = float(pair_data.get("liquidity", {}).get("usd", 0))
+            marketcap = float(pair_data.get("fdv", 0))
+            has_x = has_x_account(links)
 
-            if not (mc >= MARKETCAP_MIN and liq >= LIQUIDITY_MIN and has_x):
-                supabase.table("tokens_detectes").delete().eq("token_address", token_address).execute()
-                supabase.table("tokens_valides").delete().eq("token_address", token_address).execute()
-                print(f"[NETTOYÉ 🗑️] {token_address}")
-
+            if liquidity < LIQUIDITY_MIN or marketcap < MARKETCAP_MIN or not has_x:
+                supabase.table("tokens_detectes").delete().eq("token_address", address).execute()
+                print(f"[SUPPRIMÉ 🚫] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
     except Exception as e:
         print(f"[ERREUR NETTOYAGE] {e}")
 
-
-# ⚠️ Appel ponctuel du nettoyage
-# (Décommente cette ligne si tu veux nettoyer une fois au démarrage)
 nettoyer_tokens()
 
 # Boucle toutes les 5 minutes
