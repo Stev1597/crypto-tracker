@@ -157,8 +157,9 @@ def track_token(token):
     # ❗ Suppression si token sous les seuils ACTUELLEMENT
     data = fetch_price_data(token_address)
     if not data:
-        print(f"[SKIP] Pas de données pour {token_address}")
-        return "error"
+    print(f"[SKIP] Pas de données pour {token_address} ➡️ Suppression")
+    remove_token_completely(token_address)
+    return "removed"
 
     try:
         price = float(data.get("priceUsd", 0))
