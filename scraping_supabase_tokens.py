@@ -136,29 +136,6 @@ def get_solana_tokens():
         print(f"[ERREUR GET SOLANA TOKENS] {e}")
 
 
-# 🔥 Fonction de nettoyage ponctuelle
-def nettoyer_tokens():
-    print("\n[NETTOYAGE EN COURS...]")
-    try:
-        tokens = supabase.table("tokens_detectes").select("token_address, links").execute().data
-        for token in tokens:
-            address = token.get("token_address")
-            links = token.get("links", [])
-            pair_data = fetch_price_data(address)
-            if not pair_data:
-                continue
-
-            liquidity = float(pair_data.get("liquidity", {}).get("usd", 0))
-            marketcap = float(pair_data.get("fdv", 0))
-            has_x = has_x_account(links)
-
-            if liquidity < LIQUIDITY_MIN or marketcap < MARKETCAP_MIN or not has_x:
-                supabase.table("tokens_detectes").delete().eq("token_address", address).execute()
-                print(f"[SUPPRIMÉ 🚫] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
-    except Exception as e:
-        print(f"[ERREUR NETTOYAGE] {e}")
-
-nettoyer_tokens()
 
 # Boucle toutes les 5 minutes
 while True:
