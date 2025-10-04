@@ -45,7 +45,9 @@ def fetch_price_data(token_address):
 
         data = response.json()
         if not data.get("pairs"):
-            print(f"[⚠️] Aucun pair retourné pour {token_address}")
+            # ⚠️ Suppression automatique si aucune paire
+            print(f"[SUPPRESSION AUTO - AUCUNE PAIRE] {token_address}")
+            remove_token_completely(token_address)
             return None
 
         return data["pairs"][0]
@@ -154,12 +156,10 @@ def track_token(token):
             print(f"[IGNORE] Suivi trop récent pour {token_address}")
             return "ignored"
 
-    # ❗ Suppression si token sous les seuils ACTUELLEMENT
+    # Récupération des données prix/liquidité/marketcap
     data = fetch_price_data(token_address)
     if not data:
-    print(f"[SKIP] Pas de données pour {token_address} ➡️ Suppression")
-    remove_token_completely(token_address)
-    return "removed"
+        return "removed"
 
     try:
         price = float(data.get("priceUsd", 0))
@@ -169,6 +169,7 @@ def track_token(token):
         print(f"[ERREUR CONVERSION VALEURS] {token_address}")
         return "error"
 
+    # Suppression si sous-seuil
     if marketcap < SEUIL_MC or liquidity < SEUIL_LIQ:
         print(f"[SUPPRESSION AUTO - SOUS SEUIL] {token_address} | MC: {marketcap} | LIQ: {liquidity}")
         remove_token_completely(token_address)
