@@ -229,4 +229,4 @@ def main():
 # Boucle infinie
 while True:
     main()
-    time.sleep(300)
+    # time.sleep(300)
