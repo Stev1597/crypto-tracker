@@ -142,19 +142,19 @@ def track_token(token):
         nom_jeton = nom_jeton[:57] + "..."
 
     # Évite le suivi si déjà fait < 5 min
-    response = supabase.table("suivi_tokens") \
-        .select("created_at") \
-        .eq("token_address", token_address) \
-        .order("created_at", desc=True) \
-        .limit(1) \
-        .execute()
+   # response = supabase.table("suivi_tokens") \
+       # .select("created_at") \
+       # .eq("token_address", token_address) \
+       # .order("created_at", desc=True) \
+       # .limit(1) \
+       # .execute()
 
-    if response.data:
-        last_created = datetime.fromisoformat(response.data[0]["created_at"].replace("Z", "+00:00"))
-        delta_min = (datetime.now(timezone.utc) - last_created).total_seconds() / 60
-        if delta_min < 5:
-            print(f"[IGNORE] Suivi trop récent pour {token_address}")
-            return "ignored"
+  #  if response.data:
+       # last_created = datetime.fromisoformat(response.data[0]["created_at"].replace("Z", "+00:00"))
+       # delta_min = (datetime.now(timezone.utc) - last_created).total_seconds() / 60
+       # if delta_min < 5:
+           # print(f"[IGNORE] Suivi trop récent pour {token_address}")
+           # return "ignored"
 
     # Récupération des données prix/liquidité/marketcap
     data = fetch_price_data(token_address)
