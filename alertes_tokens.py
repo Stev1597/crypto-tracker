@@ -1,229 +1,120 @@
-import requests
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import os
+import requests
 from supabase import create_client, Client
 
-# Supabase credentials
-SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"
+# 🔐 Variables d’environnement
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Plages de variation
-INTERVALS = {
-    "var_5": 5,
-    "var_15": 15,
-    "var_30": 30,
-    "var_45": 45,
-    "var_1h": 60,
-    "var_3h": 180,
-    "var_6h": 360,
-    "var_12h": 720,
-    "var_24h": 1440,
-}
+# 📊 Plages temporelles
+PLAGES = ["var_5", "var_15", "var_30", "var_45", "var_1h", "var_3h", "var_6h", "var_12h", "var_24h"]
+COOLDOWN_MINUTES = 30  # délai minimal entre deux alertes identiques
 
-# Seuils
-SEUIL_MC = 20000
-SEUIL_LIQ = 5000
-CHUTE_MAX = 80  # ➤ Pourcentage max autorisé de baisse de marketcap
+TABLE_SUIVI = "suivi_tokens"
+TABLE_LOGS = "alertes_envoyees"
 
-def fetch_price_data(token_address):
-    url = f"https://api.dexscreener.com/latest/dex/search?q={token_address}"
-    try:
-        response = requests.get(url, timeout=10)
-
-        if response.status_code == 429:
-            print(f"[⚠️ LIMITÉ PAR L'API] Trop de requêtes. Pause de 30 sec…")
-            time.sleep(30)
-            return None
-
-        if response.status_code != 200 or not response.content:
-            print(f"[ERREUR HTTP / VIDE] pour {token_address}")
-            return None
-
-        data = response.json()
-        if not data.get("pairs"):
-            print(f"[⚠️] Aucun pair retourné pour {token_address}")
-            return None
-
-        return data["pairs"][0]
-
-    except Exception as e:
-        print(f"[ERREUR FETCH PRIX] {e}")
-        return None
-
-def get_old_price(token_address, minutes_ago):
-    try:
-        response = supabase.table("suivi_tokens") \
-            .select("created_at, price") \
-            .eq("token_address", token_address) \
-            .order("created_at", desc=True) \
-            .execute()
-
-        now = datetime.now(timezone.utc)
-        for record in response.data:
-            created = datetime.fromisoformat(record["created_at"].replace("Z", "+00:00"))
-            delta = (now - created).total_seconds() / 60
-            if delta >= minutes_ago:
-                return float(record["price"])
-        return None
-    except Exception as e:
-        print(f"[ERREUR OLD PRICE {minutes_ago}min] {e}")
-        return None
-
-def should_remove_token(token_address):
-    try:
-        # Suppression si > 3 jours sans update
-        last_update = supabase.table("suivi_tokens") \
-            .select("created_at") \
-            .eq("token_address", token_address) \
-            .order("created_at", desc=True) \
-            .limit(1) \
-            .execute()
-
-        if last_update.data:
-            last_date = datetime.fromisoformat(last_update.data[0]["created_at"].replace("Z", "+00:00"))
-            if (datetime.now(timezone.utc) - last_date).days > 3:
-                print(f"[🕒] Pas de mise à jour depuis 3 jours : {token_address}")
-                return True
-
-        # Suppression si chute ≥ CHUTE_MAX%
-        max_mc_resp = supabase.table("suivi_tokens") \
-            .select("marketcap") \
-            .eq("token_address", token_address) \
-            .order("marketcap", desc=True) \
-            .limit(1) \
-            .execute()
-
-        current_mc_resp = supabase.table("suivi_tokens") \
-            .select("marketcap") \
-            .eq("token_address", token_address) \
-            .order("created_at", desc=True) \
-            .limit(1) \
-            .execute()
-
-        if not max_mc_resp.data or not current_mc_resp.data:
-            return False
-
-        max_mc = float(max_mc_resp.data[0].get("marketcap", 0))
-        current_mc = float(current_mc_resp.data[0].get("marketcap", 0))
-
-        if max_mc > 0:
-            drop = ((max_mc - current_mc) / max_mc) * 100
-            if drop >= CHUTE_MAX:
-                print(f"[📉] Chute de {round(drop)}% (max: {max_mc} → now: {current_mc}) : {token_address}")
-                return True
-
-        return False
-    except Exception as e:
-        print(f"[ERREUR CHECK CHUTE] {e}")
-        return False
-
-def remove_token_completely(token_address):
-    try:
-        supabase.table("suivi_tokens").delete().eq("token_address", token_address).execute()
-        supabase.table("tokens_detectes").delete().eq("token_address", token_address).execute()
-        print(f"[🚫] Token supprimé : {token_address}")
-    except Exception as e:
-        print(f"[ERREUR SUPPRESSION TOKEN] {e}")
-
-def track_token(token):
-    token_address = token.get("token_address")
-    raw_name = token.get("nom_jeton", "N/A")
-
-    # Nettoyage du nom
-    nom_jeton = ' '.join(raw_name.split()).strip()
-    if len(nom_jeton) > 60:
-        nom_jeton = nom_jeton[:57] + "..."
-
-    # Évite le suivi si déjà fait < 5 min
-    response = supabase.table("suivi_tokens") \
-        .select("created_at") \
-        .eq("token_address", token_address) \
-        .order("created_at", desc=True) \
-        .limit(1) \
-        .execute()
-
-    if response.data:
-        last_created = datetime.fromisoformat(response.data[0]["created_at"].replace("Z", "+00:00"))
-        delta_min = (datetime.now(timezone.utc) - last_created).total_seconds() / 60
-        if delta_min < 5:
-            print(f"[IGNORE] Suivi trop récent pour {token_address}")
-            return "ignored"
-
-    # Récupération des données prix/liquidité/marketcap
-    data = fetch_price_data(token_address)
-    if not data:
-        print(f"[SUPPR] Paire absente : {token_address}")
-        remove_token_completely(token_address)
-        return "removed"
-
-    try:
-        price = float(data.get("priceUsd", 0))
-        liquidity = float(data.get("liquidity", {}).get("usd", 0))
-        marketcap = float(data.get("fdv", 0))
-    except:
-        print(f"[ERREUR CONVERSION] {token_address}")
-        return "error"
-
-    # Suppression si sous les seuils
-    if marketcap < SEUIL_MC or liquidity < SEUIL_LIQ:
-        print(f"[⚠️ SUPPR SOUS SEUIL] {token_address} | MC: {marketcap} | LIQ: {liquidity}")
-        remove_token_completely(token_address)
-        return "removed"
-
-    # Suppression si conditions postérieures non remplies
-    if should_remove_token(token_address):
-        remove_token_completely(token_address)
-        return "removed"
-
-    # Calcul variations
-    now = datetime.now(timezone.utc).isoformat()
-    variations = {}
-    for var_col, minutes in INTERVALS.items():
-        old_price = get_old_price(token_address, minutes)
-        if old_price and old_price != 0:
-            variations[var_col] = round(((price - old_price) / old_price) * 100, 2)
-        else:
-            variations[var_col] = None
-
-    suivi_data = {
-        "token_address": token_address,
-        "nom_jeton": nom_jeton,
-        "created_at": now,
-        "price": price,
-        "liquidity": liquidity,
-        "marketcap": marketcap,
-        **variations
+# 📤 Envoi Telegram
+def send_telegram_alert(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
     }
-
     try:
-        supabase.table("suivi_tokens").insert(suivi_data).execute()
-        print(f"[SUIVI] {nom_jeton} ({token_address})")
-        return "suivi_ok"
+        response = requests.post(url, json=payload)
+        if response.status_code != 200:
+            print(f"[ERREUR ENVOI TELEGRAM] {response.text}")
     except Exception as e:
-        print(f"[ERREUR INSERT] {e}")
-        return "error"
+        print(f"[ERREUR TELEGRAM] {e}")
 
+# 🔁 Vérifie si une alerte identique a déjà été envoyée récemment
+def alerte_deja_envoyee(token_address, type_alerte):
+    try:
+        limite = datetime.now(timezone.utc) - timedelta(minutes=COOLDOWN_MINUTES)
+        result = supabase.table(TABLE_LOGS).select("*") \
+            .eq("token_address", token_address) \
+            .eq("type_alerte", type_alerte) \
+            .gte("horodatage", limite.isoformat()).execute()
+        return len(result.data) > 0
+    except Exception as e:
+        print(f"[ERREUR VERIF LOG] {e}")
+        return False
+
+# 📝 Enregistre l’envoi d’une alerte
+def enregistrer_alerte(token_address, type_alerte):
+    try:
+        supabase.table(TABLE_LOGS).insert({
+            "token_address": token_address,
+            "type_alerte": type_alerte,
+            "horodatage": datetime.now(timezone.utc).isoformat()
+        }).execute()
+    except Exception as e:
+        print(f"[ERREUR INSERT LOG] {e}")
+
+# 🔍 Détecte les scénarios d'alerte
+def detecter_scenarios(token, premier_prix):
+    alerts = []
+    name = token.get("nom_jeton") or "Token"
+    address = token.get("token_address")
+    lien = f"https://dexscreener.com/solana/{address}"
+
+    prix_actuel = token.get("price")
+    mcap = token.get("marketcap")
+    debut = datetime.fromisoformat(token["created_at"].replace("Z", "+00:00"))
+    heures = int((datetime.now(timezone.utc) - debut).total_seconds() // 3600)
+
+    multiplicateur = round(prix_actuel / premier_prix, 2) if premier_prix else "?"
+
+    if token["var_15"] and token["var_15"] >= 100 or token["var_1h"] and token["var_1h"] >= 200:
+        alerts.append(("hausse_soudaine", f"🚀 *HAUSSE SUDDAINE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+
+    elif token["var_6h"] and token["var_6h"] >= 300 or token["var_12h"] and token["var_12h"] >= 500:
+        alerts.append(("hausse_lente", f"📈 *HAUSSE LENTE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+
+    elif token["var_60"] and abs(token["var_60"]) <= 5 and token["var_5"] and token["var_5"] >= 30:
+        alerts.append(("hausse_differee", f"⏳ *HAUSSE APRÈS STAGNATION* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+
+    elif token["var_1h"] and token["var_1h"] <= -80 or token["var_3h"] and token["var_3h"] <= -90:
+        alerts.append(("chute_brutale", f"⚠️ *CHUTE BRUTALE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+
+    elif all(token.get(p) and token[p] > 0 for p in PLAGES):
+        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name} progresse sur toutes les périodes\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+
+    return alerts
+
+# ▶️ MAIN
 def main():
-    print("[SUIVI EN COURS]")
-    start = time.time()
-    counters = {"suivi_ok": 0, "ignored": 0, "error": 0, "removed": 0}
-
+    print(f"\n[🔔 CYCLE ALERTES] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     try:
-        response = supabase.table("tokens_detectes").select("*").execute()
-        for token in response.data:
-            result = track_token(token)
-            if result in counters:
-                counters[result] += 1
-            time.sleep(0.5)
+        rows = supabase.table(TABLE_SUIVI).select("*").order("created_at", desc=True).execute().data
+        tokens_uniques = {}
+        for r in rows:
+            addr = r["token_address"]
+            if addr not in tokens_uniques:
+                tokens_uniques[addr] = r
+
+        for token in tokens_uniques.values():
+            premier_enregistrement = supabase.table(TABLE_SUIVI).select("price").eq("token_address", token["token_address"]).order("created_at").limit(1).execute().data
+            premier_prix = premier_enregistrement[0]["price"] if premier_enregistrement else None
+
+            scenarios = detecter_scenarios(token, premier_prix)
+            for type_alerte, message in scenarios:
+                if token.get("suivi_personnel") or not alerte_deja_envoyee(token["token_address"], type_alerte):
+                    send_telegram_alert(message)
+                    enregistrer_alerte(token["token_address"], type_alerte)
+                else:
+                    print(f"[🔕] Alerte ignorée (déjà envoyée) : {type_alerte} pour {token.get('nom_jeton')}")
     except Exception as e:
-        print(f"[ERREUR FETCH TOKENS DETECTES] {e}")
+        print(f"[ERREUR PRINCIPALE] {e}")
 
-    elapsed = round(time.time() - start, 2)
-    print(f"[✅ FIN] Suivis: {counters['suivi_ok']} | Ignorés: {counters['ignored']} | Erreurs: {counters['error']} | Supprimés: {counters['removed']} | Temps: {elapsed} sec")
-    print("[PAUSE] 5 minutes\n")
-
-# Boucle continue
+# 🔁 Boucle infinie
 while True:
     main()
-    time.sleep(300)
+    time.sleep(60)  # Tu peux retirer la pause ici si tu veux une analyse sans interruption
