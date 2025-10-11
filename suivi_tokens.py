@@ -1,6 +1,6 @@
 import requests
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
 
 # Supabase credentials
@@ -25,13 +25,15 @@ INTERVALS = {
 SEUIL_MC = 20000
 SEUIL_LIQ = 5000
 
+
+# --------------------------- FETCH DES DONNÉES --------------------------- #
 def fetch_price_data(token_address):
     url = f"https://api.dexscreener.com/latest/dex/search?q={token_address}"
     try:
         response = requests.get(url, timeout=10)
 
         if response.status_code == 429:
-            print(f"[⚠️ LIMITÉ PAR L'API] Trop de requêtes. Pause de 30 sec…")
+            print(f"[⚠️ LIMITÉ PAR L'API] Trop de requêtes. Pause 30 sec…")
             time.sleep(30)
             return None
 
@@ -45,7 +47,7 @@ def fetch_price_data(token_address):
 
         data = response.json()
         if not data.get("pairs"):
-            # ⚠️ Suppression automatique si aucune paire
+            # ⚠️ Suppression automatique si aucune paire trouvée
             print(f"[SUPPRESSION AUTO - AUCUNE PAIRE] {token_address}")
             remove_token_completely(token_address)
             return None
@@ -56,7 +58,10 @@ def fetch_price_data(token_address):
         print(f"[ERREUR FETCH PRIX] {e}")
         return None
 
+
+# --------------------------- UTILITAIRES --------------------------- #
 def get_old_price(token_address, minutes_ago):
+    """Retourne le prix du token il y a X minutes"""
     try:
         response = supabase.table("suivi_tokens") \
             .select("created_at, price") \
@@ -75,7 +80,36 @@ def get_old_price(token_address, minutes_ago):
         print(f"[ERREUR OLD PRICE {minutes_ago}min] {e}")
         return None
 
+
+def is_token_frozen(token_address):
+    """Vérifie si le token est figé (aucune update depuis 15 min et var_5 = 0)"""
+    try:
+        resp = supabase.table("suivi_tokens") \
+            .select("created_at, var_5") \
+            .eq("token_address", token_address) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if not resp.data:
+            return False
+
+        last = resp.data[0]
+        last_update = datetime.fromisoformat(last["created_at"].replace("Z", "+00:00"))
+        var_5 = last.get("var_5")
+
+        if (datetime.now(timezone.utc) - last_update).total_seconds() > 900 and (var_5 == 0 or var_5 is None):
+            print(f"[🧊 FIGÉ] Token {token_address} figé depuis +15 min (var_5={var_5})")
+            return True
+
+        return False
+    except Exception as e:
+        print(f"[ERREUR FIGÉ] {e}")
+        return False
+
+
 def should_remove_token(token_address):
+    """Vérifie si le token doit être supprimé pour inactivité ou chute importante"""
     try:
         # Supprimer si aucune mise à jour depuis 3 jours
         last_update = supabase.table("suivi_tokens") \
@@ -91,7 +125,7 @@ def should_remove_token(token_address):
                 print(f"[🕒] Pas de mise à jour depuis 3 jours : {token_address}")
                 return True
 
-        # Supprimer si chute > 70% par rapport au marketcap max
+        # Supprimer si chute > 80% par rapport au marketcap max
         max_mc_resp = supabase.table("suivi_tokens") \
             .select("marketcap") \
             .eq("token_address", token_address) \
@@ -124,7 +158,9 @@ def should_remove_token(token_address):
         print(f"[ERREUR CHECK CHUTE] {e}")
         return False
 
+
 def remove_token_completely(token_address):
+    """Supprime le token des tables de suivi"""
     try:
         supabase.table("suivi_tokens").delete().eq("token_address", token_address).execute()
         supabase.table("tokens_detectes").delete().eq("token_address", token_address).execute()
@@ -132,6 +168,8 @@ def remove_token_completely(token_address):
     except Exception as e:
         print(f"[ERREUR SUPPRESSION TOKEN] {e}")
 
+
+# --------------------------- SUIVI DU TOKEN --------------------------- #
 def track_token(token):
     token_address = token.get("token_address")
     raw_name = token.get("nom_jeton", "N/A")
@@ -141,22 +179,7 @@ def track_token(token):
     if len(nom_jeton) > 60:
         nom_jeton = nom_jeton[:57] + "..."
 
-    # Évite le suivi si déjà fait < 5 min
-   # response = supabase.table("suivi_tokens") \
-       # .select("created_at") \
-       # .eq("token_address", token_address) \
-       # .order("created_at", desc=True) \
-       # .limit(1) \
-       # .execute()
-
-  #  if response.data:
-       # last_created = datetime.fromisoformat(response.data[0]["created_at"].replace("Z", "+00:00"))
-       # delta_min = (datetime.now(timezone.utc) - last_created).total_seconds() / 60
-       # if delta_min < 5:
-           # print(f"[IGNORE] Suivi trop récent pour {token_address}")
-           # return "ignored"
-
-    # Récupération des données prix/liquidité/marketcap
+    # Récupération des données depuis Dexscreener
     data = fetch_price_data(token_address)
     if not data:
         return "removed"
@@ -169,17 +192,24 @@ def track_token(token):
         print(f"[ERREUR CONVERSION VALEURS] {token_address}")
         return "error"
 
-    # Suppression si sous-seuil
+    # ⚠️ Suppression automatique si sous-seuil
     if marketcap < SEUIL_MC or liquidity < SEUIL_LIQ:
         print(f"[SUPPRESSION AUTO - SOUS SEUIL] {token_address} | MC: {marketcap} | LIQ: {liquidity}")
         remove_token_completely(token_address)
         return "removed"
 
-    # Suppression si absence de mise à jour ou chute > 70%
+    # ⚠️ Suppression si figé depuis 15 min (aucune update + var_5 = 0)
+    if is_token_frozen(token_address):
+        print(f"[SUPPRESSION AUTO - FIGÉ] {token_address}")
+        remove_token_completely(token_address)
+        return "removed"
+
+    # ⚠️ Suppression si chute ou inactivité prolongée
     if should_remove_token(token_address):
         remove_token_completely(token_address)
         return "removed"
 
+    # Calcul des variations
     now = datetime.now(timezone.utc).isoformat()
     variations = {}
     for var_col, minutes in INTERVALS.items():
@@ -207,6 +237,8 @@ def track_token(token):
         print(f"[ERREUR INSERT SUIVI] {e}")
         return "error"
 
+
+# --------------------------- BOUCLE PRINCIPALE --------------------------- #
 def main():
     print("[SUIVI EN COURS]")
     start_time = time.time()
@@ -226,7 +258,8 @@ def main():
     print(f"[FIN DE CYCLE] ✅ Suivis: {counters['suivi_ok']} | ⏭️ Ignorés: {counters['ignored']} | ❌ Erreurs: {counters['error']} | 🗑️ Supprimés: {counters['removed']} | ⏱️ Temps: {elapsed} sec")
     print("[PAUSE] 5 minutes…\n")
 
-# Boucle infinie
+
+# --------------------------- BOUCLE INFINIE --------------------------- #
 while True:
     main()
     # time.sleep(300)
