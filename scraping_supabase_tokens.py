@@ -152,14 +152,21 @@ def process_token(token):
 def recheck_pending_tokens():
     try:
         result = supabase.table("tokens_en_attente").select("*").execute()
+        now = datetime.now(timezone.utc)
+
         for record in result.data:
             addr = record["token_address"]
             nom = record.get("nom_jeton", "N/A")
             premiere = datetime.fromisoformat(record["premiere_detection"])
-            elapsed = (datetime.now(timezone.utc) - premiere).total_seconds()
+            last_try = datetime.fromisoformat(record["derniere_tentative"])
+            elapsed = (now - premiere).total_seconds()
+            elapsed_since_last_try = (now - last_try).total_seconds()
 
             if elapsed > MAX_WAIT_HOURS * 3600:
                 remove_pending_token(addr)
+                continue
+
+            if elapsed_since_last_try < RETRY_INTERVAL_MIN * 60:
                 continue
 
             print(f"[🔁 RETENTE] {addr}")
@@ -167,23 +174,27 @@ def recheck_pending_tokens():
             update_pending_attempt(addr)
 
             if pair_data:
-                print(f"[✅ INDEXÉ] {addr}")
-                log_event(addr, "INDEXATION", "Token enfin indexé")
-
-                remove_pending_token(addr)
                 liquidity = float(pair_data.get("liquidity", {}).get("usd", 0))
                 marketcap = float(pair_data.get("fdv", 0))
+                if liquidity >= LIQUIDITY_MIN and marketcap >= MARKETCAP_MIN:
+                    print(f"[✅ INDEXÉ & FILTRÉ] {addr}")
+                    log_event(addr, "INDEXATION", "Token enfin indexé et correspond au filtre")
 
-                token_data = {
-                    "nom_jeton": nom,
-                    "token_address": addr,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "liquidite": liquidity,
-                    "marketcap": marketcap
-                }
+                    remove_pending_token(addr)
+                    token_data = {
+                        "nom_jeton": nom,
+                        "token_address": addr,
+                        "created_at": now.isoformat(),
+                        "liquidite": liquidity,
+                        "marketcap": marketcap
+                    }
 
-                insert_detected_token(token_data)
-                insert_valid_token(token_data)
+                    insert_detected_token(token_data)
+                    insert_valid_token(token_data)
+                else:
+                    print(f"[FILTRÉ ❌] {addr} | LIQ: {liquidity} | MC: {marketcap}")
+            else:
+                print(f"[NON INDEXÉ ⏳] {addr}")
     except Exception as e:
         print(f"[ERREUR RETENTE] {e}")
 
