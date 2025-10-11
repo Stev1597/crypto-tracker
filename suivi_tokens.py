@@ -82,24 +82,33 @@ def get_old_price(token_address, minutes_ago):
 
 
 def is_token_frozen(token_address):
-    """Supprime immédiatement si var_5 = 0 sur la dernière ligne du token."""
+    """Vérifie si un token est figé depuis 15 minutes (var_5 = 0 sur toute la période)."""
     try:
+        now = datetime.now(timezone.utc)
+        fifteen_min_ago = now - timedelta(minutes=15)
+
         resp = supabase.table("suivi_tokens") \
             .select("created_at, var_5") \
             .eq("token_address", token_address) \
             .order("created_at", desc=True) \
-            .limit(1) \
             .execute()
 
         if not resp.data:
             return False
 
-        record = resp.data[0]
-        var_5 = record.get("var_5")
+        recent = [
+            r for r in resp.data
+            if datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) > fifteen_min_ago
+        ]
 
-        # Si var_5 est nul ou égal à zéro, on considère le token figé immédiatement
-        if var_5 in [0, None]:
-            print(f"[🧊 FIGÉ INSTANT] Token {token_address} supprimé (var_5 = {var_5})")
+        if not recent:
+            return False
+
+        # Vérifie si toutes les var_5 sont nulles ou égales à zéro
+        all_zero = all(r.get("var_5") in [0, None] for r in recent)
+
+        if all_zero:
+            print(f"[🧊 FIGÉ] Token {token_address} figé depuis 15 min (var_5 = 0 sur toute la période)")
             return True
 
         return False
