@@ -11,22 +11,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Seuils
 LIQUIDITY_MIN = 5000
 MARKETCAP_MIN = 20000
-RETRY_INTERVAL_MIN = 15
-MAX_WAIT_HOURS = 3
-
-# ------------------ LOGGING ------------------ #
-def log_event(token_address, event, message):
-    try:
-        now = datetime.now(timezone.utc).isoformat()
-        supabase.table("logs_detection").insert({
-            "token_address": token_address,
-            "event": event,
-            "message": message,
-            "created_at": now
-        }).execute()
-        print(f"[📝 LOG] {event} | {token_address} => {message}")
-    except Exception as e:
-        print(f"[ERREUR LOG DETECTION] {e}")
 
 # ------------------ UTILS ------------------ #
 def get_existing_tokens():
@@ -67,60 +51,23 @@ def has_x_account(links):
 # ------------------ BDD ------------------ #
 def insert_detected_token(token_data):
     try:
-        # Vérifie si le token est déjà présent dans tokens_detectes
         existing = supabase.table("tokens_detectes") \
             .select("token_address") \
             .eq("token_address", token_data["token_address"]) \
             .execute()
-
         if existing.data:
-            print(f"[🔁 DÉJÀ PRÉSENT] {token_data['token_address']} — pas de réinsertion.")
-            return  # On ne réinsère pas si déjà présent
-
-        # Sinon, on insère
+            print(f"[🔁 DÉJÀ PRÉSENT] {token_data['token_address']}")
+            return
         supabase.table("tokens_detectes").insert(token_data).execute()
         print(f"[INSÉRÉ ✅] {token_data['token_address']}")
-        log_event(token_data["token_address"], "INSERT_DETECTED", "Token inséré dans tokens_detectes")
     except Exception as e:
-        print(f"[ERREUR INSERT token_detectes] {e}")
+        print(f"[ERREUR INSERT DETECT] {e}")
 
 def insert_valid_token(token_data):
     try:
         supabase.table("tokens_valides").insert(token_data).execute()
-        log_event(token_data["token_address"], "INSERT_VALID", "Token inséré dans tokens_valides")
     except Exception as e:
-        print(f"[ERREUR INSERT token_valides] {e}")
-
-def add_pending_token(address, name):
-    try:
-        now = datetime.now(timezone.utc).isoformat()
-        supabase.table("tokens_en_attente").insert({
-            "token_address": address,
-            "nom_jeton": name,
-            "premiere_detection": now,
-            "derniere_tentative": now,
-            "tentatives": 1
-        }).execute()
-        print(f"[⏳ EN ATTENTE] {address}")
-        log_event(address, "EN_ATTENTE", "Token ajouté à tokens_en_attente sans données")
-    except Exception as e:
-        print(f"[ERREUR INSERT EN ATTENTE] {e}")
-
-def update_pending_attempt(address):
-    try:
-        supabase.table("tokens_en_attente").update({
-            "derniere_tentative": datetime.now(timezone.utc).isoformat()
-        }).eq("token_address", address).execute()
-    except Exception as e:
-        print(f"[ERREUR UPDATE EN ATTENTE] {e}")
-
-def remove_pending_token(address):
-    try:
-        supabase.table("tokens_en_attente").delete().eq("token_address", address).execute()
-        print(f"[❌ RETIRÉ] {address}")
-        log_event(address, "SUPPRESSION_ATTENTE", "Token retiré après 3h sans données")
-    except Exception as e:
-        print(f"[ERREUR DELETE EN ATTENTE] {e}")
+        print(f"[ERREUR INSERT VALIDES] {e}")
 
 # ------------------ TRAITEMENT ------------------ #
 def process_token(token):
@@ -134,16 +81,7 @@ def process_token(token):
 
     pair_data = fetch_price_data(address)
     if not pair_data:
-        # ❗️Avant d'ajouter en attente, on vérifie s’il est déjà dans tokens_en_attente
-        existing_pending = supabase.table("tokens_en_attente") \
-            .select("token_address") \
-            .eq("token_address", address) \
-            .execute()
-
-        if not existing_pending.data:
-            add_pending_token(address, name)
-        else:
-            print(f"[⏳ DÉJÀ EN ATTENTE] {address} — pas de réinsertion ni de log.")
+        print(f"[NON INDEXÉ ❌] {address}")
         return
 
     liquidity = float(pair_data.get("liquidity", {}).get("usd", 0))
@@ -168,56 +106,6 @@ def process_token(token):
     insert_detected_token(token_data)
     insert_valid_token(token_data)
 
-# ------------------ RECHECK ATTENTES ------------------ #
-def recheck_pending_tokens():
-    try:
-        result = supabase.table("tokens_en_attente").select("*").execute()
-        now = datetime.now(timezone.utc)
-
-        for record in result.data:
-            addr = record["token_address"]
-            nom = record.get("nom_jeton", "N/A")
-            premiere = datetime.fromisoformat(record["premiere_detection"])
-            last_try = datetime.fromisoformat(record["derniere_tentative"])
-            elapsed = (now - premiere).total_seconds()
-            elapsed_since_last_try = (now - last_try).total_seconds()
-
-            if elapsed > MAX_WAIT_HOURS * 3600:
-                remove_pending_token(addr)
-                continue
-
-            if elapsed_since_last_try < RETRY_INTERVAL_MIN * 60:
-                continue
-
-            print(f"[🔁 RETENTE] {addr}")
-            pair_data = fetch_price_data(addr)
-            update_pending_attempt(addr)
-
-            if pair_data:
-                liquidity = float(pair_data.get("liquidity", {}).get("usd", 0))
-                marketcap = float(pair_data.get("fdv", 0))
-                if liquidity >= LIQUIDITY_MIN and marketcap >= MARKETCAP_MIN:
-                    print(f"[✅ INDEXÉ & FILTRÉ] {addr}")
-                    log_event(addr, "INDEXATION", "Token enfin indexé et correspond au filtre")
-
-                    remove_pending_token(addr)
-                    token_data = {
-                        "nom_jeton": nom,
-                        "token_address": addr,
-                        "created_at": now.isoformat(),
-                        "liquidite": liquidity,
-                        "marketcap": marketcap
-                    }
-
-                    insert_detected_token(token_data)
-                    insert_valid_token(token_data)
-                else:
-                    print(f"[FILTRÉ ❌] {addr} | LIQ: {liquidity} | MC: {marketcap}")
-            else:
-                print(f"[NON INDEXÉ ⏳] {addr}")
-    except Exception as e:
-        print(f"[ERREUR RETENTE] {e}")
-
 # ------------------ SCRAPING ------------------ #
 def get_solana_tokens():
     url = "https://api.dexscreener.com/token-profiles/latest/v1"
@@ -240,6 +128,5 @@ def get_solana_tokens():
 while True:
     print("[🚀 SCRAPING EN COURS]")
     get_solana_tokens()
-    recheck_pending_tokens()
     print("[⏳ PAUSE 5 min...]\n")
     time.sleep(300)
