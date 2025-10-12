@@ -30,14 +30,23 @@ def fetch_price_data(token_address):
             return None
         if response.status_code != 200:
             return None
+
         data = response.json()
         pairs = data.get("pairs", [])
-        for pair in pairs:
-            dex_id = pair.get("dexId", "").lower()
-            if dex_id in ["pumpswap", "raydium"]:
-                return pair
-        return None
-    except:
+
+        # Filtre toutes les paires autorisées (PumpSwap ou Raydium)
+        allowed_dexes = ["pumpswap", "raydium"]
+        allowed_pairs = [pair for pair in pairs if pair.get("dexId", "").lower() in allowed_dexes]
+
+        if not allowed_pairs:
+            print(f"[❌ PAS DE DEX VALIDE] {token_address}")
+            return None
+
+        # Tu peux choisir ici la première paire PumpSwap ou Raydium trouvée :
+        return allowed_pairs[0]
+
+    except Exception as e:
+        print(f"[ERREUR FETCH] {e}")
         return None
 
 def has_x_account(links):
