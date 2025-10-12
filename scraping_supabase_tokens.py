@@ -134,7 +134,16 @@ def process_token(token):
 
     pair_data = fetch_price_data(address)
     if not pair_data:
-        add_pending_token(address, name)
+        # ❗️Avant d'ajouter en attente, on vérifie s’il est déjà dans tokens_en_attente
+        existing_pending = supabase.table("tokens_en_attente") \
+            .select("token_address") \
+            .eq("token_address", address) \
+            .execute()
+
+        if not existing_pending.data:
+            add_pending_token(address, name)
+        else:
+            print(f"[⏳ DÉJÀ EN ATTENTE] {address} — pas de réinsertion ni de log.")
         return
 
     liquidity = float(pair_data.get("liquidity", {}).get("usd", 0))
