@@ -80,7 +80,9 @@ def insert_valid_token(token_data):
 
 # ------------------ TRAITEMENT ------------------ #
 def process_token(token):
-    if token.get("chainId") != "solana":
+    chain = token.get("chainId", "").lower()
+    if chain != "solana":
+        print(f"[⛔️ NON SOLANA] {token.get('tokenAddress')} — ignoré.")
         return
 
     address = token.get("tokenAddress")
