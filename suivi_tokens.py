@@ -82,7 +82,7 @@ def get_old_price(token_address, minutes_ago):
 
 
 def is_token_frozen(token_address):
-    """Vérifie si un token est figé depuis 15 minutes (var_5 = 0 sur toute la période)."""
+    """Vérifie si un token est figé depuis 15 minutes (aucune vraie variation)."""
     try:
         now = datetime.now(timezone.utc)
         fifteen_min_ago = now - timedelta(minutes=15)
@@ -101,17 +101,19 @@ def is_token_frozen(token_address):
             if datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) > fifteen_min_ago
         ]
 
-        if not recent:
+        if not recent or len(recent) < 3:
+            # Trop peu de points pour juger
             return False
 
-        # Vérifie si toutes les var_5 sont nulles ou égales à zéro
-        all_zero = all(r.get("var_5") in [0, None] for r in recent)
+        # Ne considérer comme figé que si la variation est strictement nulle (pas même 0.01 %)
+        all_static = all(abs(r.get("var_5") or 0) < 0.01 for r in recent)
 
-        if all_zero:
-            print(f"[🧊 FIGÉ] Token {token_address} figé depuis 15 min (var_5 = 0 sur toute la période)")
+        if all_static:
+            print(f"[🧊 FIGÉ] Token {token_address} figé depuis 15 min (var_5 ≈ 0)")
             return True
 
         return False
+
     except Exception as e:
         print(f"[ERREUR FIGÉ] {e}")
         return False
