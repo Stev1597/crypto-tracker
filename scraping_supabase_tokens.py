@@ -67,6 +67,17 @@ def has_x_account(links):
 # ------------------ BDD ------------------ #
 def insert_detected_token(token_data):
     try:
+        # Vérifie si le token est déjà présent dans tokens_detectes
+        existing = supabase.table("tokens_detectes") \
+            .select("token_address") \
+            .eq("token_address", token_data["token_address"]) \
+            .execute()
+
+        if existing.data:
+            print(f"[🔁 DÉJÀ PRÉSENT] {token_data['token_address']} — pas de réinsertion.")
+            return  # On ne réinsère pas si déjà présent
+
+        # Sinon, on insère
         supabase.table("tokens_detectes").insert(token_data).execute()
         print(f"[INSÉRÉ ✅] {token_data['token_address']}")
         log_event(token_data["token_address"], "INSERT_DETECTED", "Token inséré dans tokens_detectes")
