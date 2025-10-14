@@ -110,41 +110,52 @@ def get_old_price(token_address, minutes_ago, tolerance=6):
 
 
 def is_token_frozen(token_address):
-    """Vérifie si un token est figé depuis 15 minutes (aucune vraie variation)."""
+    """
+    Considère un token comme figé si TOUTES les variations
+    var_5, var_15, var_30, var_45, var_1h dans les 60 dernières minutes
+    sont comprises entre -0.1% et +0.1%.
+    """
     try:
         now = datetime.now(timezone.utc)
-        fifteen_min_ago = now - timedelta(minutes=15)
+        one_hour_ago = now - timedelta(minutes=60)
 
-        resp = supabase.table("suivi_tokens") \
-            .select("created_at, var_5") \
+        response = supabase.table("suivi_tokens") \
+            .select("created_at, var_5, var_15, var_30, var_45, var_1h") \
             .eq("token_address", token_address) \
             .order("created_at", desc=True) \
+            .limit(10) \
             .execute()
 
-        if not resp.data:
+        if not response.data:
             return False
 
-        recent = [
-            r for r in resp.data
-            if datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) > fifteen_min_ago
-        ]
+        # Récupère la dernière ligne dans les 60 dernières minutes
+        for record in response.data:
+            created = datetime.fromisoformat(record["created_at"].replace("Z", "+00:00"))
+            if created < one_hour_ago:
+                continue
 
-        if not recent or len(recent) < 3:
-            # Trop peu de points pour juger
-            return False
+            variations = [
+                record.get("var_5"),
+                record.get("var_15"),
+                record.get("var_30"),
+                record.get("var_45"),
+                record.get("var_1h"),
+            ]
 
-        # Ne considérer comme figé que si la variation est strictement nulle (pas même 0.01 %)
-        all_static = all(abs(r.get("var_5") or 0) < 0.01 for r in recent)
+            if any(v is None for v in variations):
+                return False  # Pas assez de données
 
-        if all_static:
-            print(f"[🧊 FIGÉ] Token {token_address} figé depuis 15 min (var_5 ≈ 0)")
-            return True
+            if all(-0.1 <= v <= 0.1 for v in variations):
+                print(f"[🧊 FIGÉ] Token {token_address} : variations < 0.1% sur 1h")
+                return True
 
         return False
 
     except Exception as e:
         print(f"[ERREUR FIGÉ] {e}")
         return False
+
 
 
 def should_remove_token(token_address):
