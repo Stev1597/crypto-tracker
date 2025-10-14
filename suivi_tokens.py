@@ -62,13 +62,14 @@ def fetch_price_data(token_address):
 # --------------------------- UTILITAIRES --------------------------- #
 def get_old_price(token_address, minutes_ago, tolerance=6):
     """
-    Récupère le prix le plus proche de l'intervalle demandé, dans une tolérance de ±6 min.
+    Récupère le prix du token autour de l'instant visé (± tolerance minutes).
+    Si rien trouvé, retourne la valeur la plus proche *avant* T-interval.
     """
     try:
         response = supabase.table("suivi_tokens") \
             .select("created_at, price") \
             .eq("token_address", token_address) \
-            .order("created_at", desc=False) \
+            .order("created_at", desc=True) \
             .execute()
 
         if not response.data:
@@ -77,21 +78,35 @@ def get_old_price(token_address, minutes_ago, tolerance=6):
         now = datetime.now(timezone.utc)
         target_time = now - timedelta(minutes=minutes_ago)
 
-        closest_price = None
-        closest_diff = float('inf')
+        closest_in_window = None
+        min_diff = float("inf")
+        fallback_price = None
+        fallback_time = None
 
         for record in response.data:
             created = datetime.fromisoformat(record["created_at"].replace("Z", "+00:00"))
-            delta = abs((created - target_time).total_seconds()) / 60
+            price = float(record["price"])
+            delta_minutes = abs((created - target_time).total_seconds()) / 60
 
-            if delta <= tolerance and delta < closest_diff:
-                closest_price = float(record["price"])
-                closest_diff = delta
+            if delta_minutes <= tolerance and delta_minutes < min_diff:
+                closest_in_window = price
+                min_diff = delta_minutes
 
-        return closest_price
+            # fallback : on prend la plus proche avant target_time
+            if created < target_time:
+                if not fallback_time or created > fallback_time:
+                    fallback_price = price
+                    fallback_time = created
+
+        if closest_in_window is not None:
+            return closest_in_window
+
+        return fallback_price  # Peut être None si aucun fallback non plus
+
     except Exception as e:
         print(f"[ERREUR GET OLD PRICE {minutes_ago}min] {e}")
         return None
+
 
 
 def is_token_frozen(token_address):
