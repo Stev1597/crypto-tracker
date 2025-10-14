@@ -62,13 +62,13 @@ def fetch_price_data(token_address):
 # --------------------------- UTILITAIRES --------------------------- #
 def get_old_price(token_address, minutes_ago, tolerance=6):
     """
-    Récupère le prix du token autour de l'instant visé (± tolerance minutes), en prenant la plus proche.
+    Récupère le prix le plus proche de l'intervalle demandé, dans une tolérance de ±6 min.
     """
     try:
         response = supabase.table("suivi_tokens") \
             .select("created_at, price") \
             .eq("token_address", token_address) \
-            .order("created_at", desc=True) \
+            .order("created_at", desc=False) \
             .execute()
 
         if not response.data:
@@ -82,11 +82,11 @@ def get_old_price(token_address, minutes_ago, tolerance=6):
 
         for record in response.data:
             created = datetime.fromisoformat(record["created_at"].replace("Z", "+00:00"))
-            delta_minutes = abs((created - target_time).total_seconds()) / 60
+            delta = abs((created - target_time).total_seconds()) / 60
 
-            if delta_minutes <= tolerance and delta_minutes < closest_diff:
+            if delta <= tolerance and delta < closest_diff:
                 closest_price = float(record["price"])
-                closest_diff = delta_minutes
+                closest_diff = delta
 
         return closest_price
     except Exception as e:
