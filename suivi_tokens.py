@@ -271,6 +271,7 @@ def track_token(token):
 
     suivi_data = {
         "token_address": token_address,
+        "pair_address": token.get ("pair_address")
         "nom_jeton": nom_jeton,
         "created_at": now,
         "price": price,
