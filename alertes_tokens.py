@@ -42,7 +42,7 @@ def alerte_deja_envoyee(token_address, type_alerte):
         result = supabase.table(TABLE_LOGS).select("*") \
             .eq("token_address", token_address) \
             .eq("type_alerte", type_alerte) \
-            .gte("horodatage", limite.isoformat()).execute()
+            .gte("created_at", limite.isoformat()).execute()
         return len(result.data) > 0
     except Exception as e:
         print(f"[ERREUR VERIF LOG] {e}")
@@ -54,7 +54,7 @@ def enregistrer_alerte(token_address, type_alerte):
         supabase.table(TABLE_LOGS).insert({
             "token_address": token_address,
             "type_alerte": type_alerte,
-            "horodatage": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }).execute()
     except Exception as e:
         print(f"[ERREUR INSERT LOG] {e}")
