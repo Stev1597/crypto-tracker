@@ -5,10 +5,10 @@ import requests
 from supabase import create_client, Client
 
 # 🔐 Variables d’environnement
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+SUPABASE_URL = os.environ.get("https://mwnejkrkjlnrwrulqedd.supabase.co")
+SUPABASE_KEY = os.environ.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk")
+TELEGRAM_TOKEN = os.environ.get("7951081320:AAGRArBGZwj1KMKtaL1kjTWyLeqiLKk-IEc")
+TELEGRAM_CHAT_ID = os.environ.get("1426865721")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
