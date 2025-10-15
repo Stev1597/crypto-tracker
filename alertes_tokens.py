@@ -76,7 +76,7 @@ def detecter_scenarios(token, premier_prix, est_suivi):
     alerts = []
     name = token.get("nom_jeton") or "Token"
     address = token.get("token_address")
-    lien = f"https://app.axiom.trade/token/{address}?chain=solana"
+    lien = f"https://axiom.trade/meme/{address}"
     prix_actuel = token.get("price")
     mcap = token.get("marketcap")
     debut = datetime.fromisoformat(token["created_at"].replace("Z", "+00:00"))
