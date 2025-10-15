@@ -14,10 +14,11 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # 📊 Plages temporelles
 PLAGES = ["var_5", "var_15", "var_30", "var_45", "var_1h", "var_3h", "var_6h", "var_12h", "var_24h"]
-COOLDOWN_MINUTES = 30  # délai minimal entre deux alertes identiques
+COOLDOWN_MINUTES = 30
 
 TABLE_SUIVI = "suivi_tokens"
 TABLE_LOGS = "alertes_envoyees"
+TABLE_PERSO = "tokens_suivis_personnels"
 
 # 📤 Envoi Telegram
 def send_telegram_alert(message):
@@ -34,7 +35,7 @@ def send_telegram_alert(message):
     except Exception as e:
         print(f"[ERREUR TELEGRAM] {e}")
 
-# 🔁 Vérifie si une alerte identique a déjà été envoyée récemment
+# ⏱ Vérifie si une alerte identique a déjà été envoyée
 def alerte_deja_envoyee(token_address, type_alerte):
     try:
         limite = datetime.now(timezone.utc) - timedelta(minutes=COOLDOWN_MINUTES)
@@ -47,7 +48,7 @@ def alerte_deja_envoyee(token_address, type_alerte):
         print(f"[ERREUR VERIF LOG] {e}")
         return False
 
-# 📝 Enregistre l’envoi d’une alerte
+# ✅ Enregistre l’envoi
 def enregistrer_alerte(token_address, type_alerte):
     try:
         supabase.table(TABLE_LOGS).insert({
@@ -58,20 +59,31 @@ def enregistrer_alerte(token_address, type_alerte):
     except Exception as e:
         print(f"[ERREUR INSERT LOG] {e}")
 
-# 🔍 Détecte les scénarios d'alerte
-def detecter_scenarios(token, premier_prix):
+# 🔎 Vérifie si token est suivi personnellement
+def est_suivi_personnellement(token_address):
+    try:
+        result = supabase.table(TABLE_PERSO).select("suivi") \
+            .eq("token_address", token_address).execute()
+        if result.data and result.data[0].get("suivi", "").lower() == "oui":
+            return True
+        return False
+    except Exception as e:
+        print(f"[ERREUR VERIF SUIVI PERSO] {e}")
+        return False
+
+# 🧠 Détection des alertes
+def detecter_scenarios(token, premier_prix, est_suivi):
     alerts = []
     name = token.get("nom_jeton") or "Token"
     address = token.get("token_address")
     lien = f"https://dexscreener.com/solana/{address}"
-
     prix_actuel = token.get("price")
     mcap = token.get("marketcap")
     debut = datetime.fromisoformat(token["created_at"].replace("Z", "+00:00"))
     heures = int((datetime.now(timezone.utc) - debut).total_seconds() // 3600)
-
     multiplicateur = round(prix_actuel / premier_prix, 2) if premier_prix else "?"
 
+    # 🔺 Alertes haussières pour tous
     if token["var_15"] and token["var_15"] >= 100 or token["var_1h"] and token["var_1h"] >= 200:
         alerts.append(("hausse_soudaine", f"🚀 *HAUSSE SUDDAINE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
 
@@ -81,11 +93,19 @@ def detecter_scenarios(token, premier_prix):
     elif token["var_60"] and abs(token["var_60"]) <= 5 and token["var_5"] and token["var_5"] >= 30:
         alerts.append(("hausse_differee", f"⏳ *HAUSSE APRÈS STAGNATION* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
 
-    elif token["var_1h"] and token["var_1h"] <= -80 or token["var_3h"] and token["var_3h"] <= -90:
-        alerts.append(("chute_brutale", f"⚠️ *CHUTE BRUTALE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
-
     elif all(token.get(p) and token[p] > 0 for p in PLAGES):
-        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name} progresse sur toutes les périodes\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+
+    # 🔻 Alertes baissières uniquement si suivi personnellement
+    if est_suivi:
+        if token["var_1h"] and token["var_1h"] <= -30:
+            alerts.append(("baisse_30", f"🔻 *CHUTE -30%* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+
+        if token["var_3h"] and token["var_3h"] <= -60:
+            alerts.append(("baisse_60", f"🔻 *CHUTE -60%* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+
+        if token["var_1h"] and token["var_1h"] <= -80 or token["var_3h"] and token["var_3h"] <= -90:
+            alerts.append(("chute_brutale", f"⚠️ *CHUTE BRUTALE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
 
     return alerts
 
@@ -101,20 +121,24 @@ def main():
                 tokens_uniques[addr] = r
 
         for token in tokens_uniques.values():
-            premier_enregistrement = supabase.table(TABLE_SUIVI).select("price").eq("token_address", token["token_address"]).order("created_at").limit(1).execute().data
-            premier_prix = premier_enregistrement[0]["price"] if premier_enregistrement else None
+            token_address = token["token_address"]
+            premier = supabase.table(TABLE_SUIVI).select("price").eq("token_address", token_address).order("created_at").limit(1).execute().data
+            premier_prix = premier[0]["price"] if premier else None
 
-            scenarios = detecter_scenarios(token, premier_prix)
+            est_suivi = est_suivi_personnellement(token_address)
+            scenarios = detecter_scenarios(token, premier_prix, est_suivi)
+
             for type_alerte, message in scenarios:
-                if token.get("suivi_personnel") or not alerte_deja_envoyee(token["token_address"], type_alerte):
+                if not alerte_deja_envoyee(token_address, type_alerte):
                     send_telegram_alert(message)
-                    enregistrer_alerte(token["token_address"], type_alerte)
+                    enregistrer_alerte(token_address, type_alerte)
                 else:
                     print(f"[🔕] Alerte ignorée (déjà envoyée) : {type_alerte} pour {token.get('nom_jeton')}")
+
     except Exception as e:
         print(f"[ERREUR PRINCIPALE] {e}")
 
 # 🔁 Boucle infinie
 while True:
     main()
-    time.sleep(60)  # Tu peux retirer la pause ici si tu veux une analyse sans interruption
+    time.sleep(60)
