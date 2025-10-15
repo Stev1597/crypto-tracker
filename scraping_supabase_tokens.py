@@ -14,11 +14,9 @@ ALLOWED_DEXES = ["pumpswap", "raydium"]
 
 # ------------------ UTILS ------------------ #
 def get_existing_tokens():
-    """Récupère tous les tokens déjà détectés ou ignorés."""
     try:
         detectes = supabase.table("tokens_detectes").select("token_address").execute()
         ignores = supabase.table("tokens_ignores").select("token_address").execute()
-
         list_detectes = {t["token_address"] for t in detectes.data if t.get("token_address")}
         list_ignores = {t["token_address"] for t in ignores.data if t.get("token_address")}
         return list_detectes.union(list_ignores)
@@ -27,7 +25,6 @@ def get_existing_tokens():
         return set()
 
 def add_to_ignored_tokens(address, reason="Aucun DEX valide"):
-    """Ajoute un token à la liste noire permanente."""
     try:
         supabase.table("tokens_ignores").insert({
             "token_address": address,
@@ -39,7 +36,6 @@ def add_to_ignored_tokens(address, reason="Aucun DEX valide"):
         print(f"[ERREUR INSERT IGNORE] {e}")
 
 def fetch_price_data(token_address):
-    """Interroge Dexscreener pour les données et vérifie la présence d’un DEX autorisé."""
     url = f"https://api.dexscreener.com/latest/dex/search?q={token_address}"
     try:
         response = requests.get(url, timeout=10)
@@ -52,15 +48,12 @@ def fetch_price_data(token_address):
 
         data = response.json()
         pairs = data.get("pairs", [])
-
-        # Filtrer les DEX autorisés
         valid_pairs = [p for p in pairs if p.get("dexId", "").lower() in ALLOWED_DEXES]
         if not valid_pairs:
             add_to_ignored_tokens(token_address, "Aucun DEX valide (ex: pumpfun/météora)")
             return None
 
-        return valid_pairs[0]
-
+        return valid_pairs[0]  # ✅ pairAddress incluse
     except Exception as e:
         print(f"[ERREUR FETCH PRIX] {e}")
         return None
@@ -97,7 +90,6 @@ def insert_valid_token(token_data):
 
 # ------------------ TRAITEMENT ------------------ #
 def process_token(token):
-    """Analyse et filtre un token avant insertion."""
     chain = token.get("chainId", "").lower()
     if chain != "solana":
         print(f"[⛔️ NON SOLANA] {token.get('tokenAddress')} — ignoré.")
@@ -115,6 +107,7 @@ def process_token(token):
 
     liquidity = float(pair_data.get("liquidity", {}).get("usd", 0))
     marketcap = float(pair_data.get("fdv", 0))
+    pair_address = pair_data.get("pairAddress", "")  # ✅ NOUVEAU
     has_x = has_x_account(links)
 
     if not (liquidity >= LIQUIDITY_MIN and marketcap >= MARKETCAP_MIN and has_x):
@@ -125,6 +118,7 @@ def process_token(token):
     token_data = {
         "nom_jeton": name,
         "token_address": address,
+        "pair_address": pair_address,  # ✅ NOUVEAU
         "dex_url": dex_url,
         "created_at": now,
         "liquidite": liquidity,
@@ -137,7 +131,6 @@ def process_token(token):
 
 # ------------------ SCRAPING ------------------ #
 def get_solana_tokens():
-    """Récupère les tokens récents depuis Dexscreener."""
     url = "https://api.dexscreener.com/token-profiles/latest/v1"
     try:
         response = requests.get(url, timeout=15)
@@ -156,10 +149,9 @@ def get_solana_tokens():
     except Exception as e:
         print(f"[ERREUR GET TOKENS] {e}")
 
-
 def purge_ignored_tokens():
     try:
-        seuil = datetime.now(timezone.utc).timestamp() - 3 * 24 * 3600  # 3 jours
+        seuil = datetime.now(timezone.utc).timestamp() - 3 * 24 * 3600
         date_limite = datetime.fromtimestamp(seuil).isoformat()
         supabase.table("tokens_ignores") \
             .delete() \
