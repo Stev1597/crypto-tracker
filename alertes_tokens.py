@@ -97,6 +97,21 @@ def detecter_scenarios(token, premier_prix, est_suivi):
     elif all(token.get(p) and token[p] > 0 for p in PLAGES):
         alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
 
+    # 🔺 Nouvelle alerte : hausse continue sur var_5
+    try:
+        rows = supabase.table(TABLE_SUIVI).select("var_5").eq("token_address", address).order("created_at", desc=True).limit(5).execute().data
+        var5_list = [r["var_5"] for r in rows if r.get("var_5") is not None]
+        if len(var5_list) >= 3:
+            count_15p = sum(1 for v in var5_list if v >= 15)
+            if count_15p >= 2:
+                var5_str = ", ".join(f"{v:.1f}%" for v in var5_list)
+                alerts.append((
+                    "hausse_continue_var5",
+                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*{count_15p}/5 à +15 %* • x{multiplicateur} ({heures}h)\n🔗 [Trader sur Axiom]({lien})"
+                ))
+    except Exception as e:
+        print(f"[ERREUR HAUSSE CONTINUE] {e}")
+
     # 🔻 Alertes baissières uniquement si suivi personnellement
     if est_suivi:
         if token["var_1h"] and token["var_1h"] <= -30:
