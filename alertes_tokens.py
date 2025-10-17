@@ -14,7 +14,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # 📊 Plages temporelles
 PLAGES = ["var_5", "var_15", "var_30", "var_45", "var_1h", "var_3h", "var_6h", "var_12h", "var_24h"]
-COOLDOWN_MINUTES = 30
+COOLDOWN_MINUTES = 10
 
 TABLE_SUIVI = "suivi_tokens"
 TABLE_LOGS = "alertes_envoyees"
