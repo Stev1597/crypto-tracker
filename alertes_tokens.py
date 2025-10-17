@@ -188,7 +188,7 @@ def main():
             prix_actuel = token.get("price")
             est_suivi = est_suivi_personnellement(token_address)
 
-            # 🔼 Suivi du prix maximum (réinitialisé si nécessaire)
+            # 🔼 Suivi du prix maximum
             if prix_actuel:
                 if token_address not in prix_max_token:
                     prix_max_token[token_address] = prix_actuel
@@ -201,7 +201,7 @@ def main():
             premier_prix = premier[0]["price"] if premier else None
             scenarios = detecter_scenarios(token, premier_prix, est_suivi)
 
-            # ➕ Scénario supplémentaire : baisse depuis prix max (si suivi)
+            # ➕ Scénario supplémentaire : baisse depuis prix max
             if est_suivi and prix_actuel and token_address in prix_max_token:
                 prix_max = prix_max_token[token_address]
                 baisse_pct = round((prix_actuel - prix_max) / prix_max * 100, 2)
@@ -220,21 +220,21 @@ def main():
                     )
                     enregistrer_alerte(token_address, "baisse_depuis_max_60")
 
-            # 🔁 Alertes classiques
+            # 🔁 Alertes classiques (hausses et autres)
             for type_alerte, message in scenarios:
-    is_hausse = type_alerte in ["hausse_soudaine", "hausse_lente", "hausse_differee", "solidite", "hausse_continue_var5"]
-    
-    if not alerte_deja_envoyee(token_address, type_alerte):
-        if is_hausse:
-            dernier_mcap = dernier_mcap_alerte_hausse(token_address)
-            if token["marketcap"] < dernier_mcap:
-                print(f"[🔕] Alerte haussière ignorée (mcap {token['marketcap']} < {dernier_mcap}) pour {token.get('nom_jeton')}")
-                continue  # Ne pas envoyer si mcap est inférieur au dernier mcap alerté
+                is_hausse = type_alerte in ["hausse_soudaine", "hausse_lente", "hausse_differee", "solidite", "hausse_continue_var5"]
 
-        n = nombre_alertes_envoyees(token_address) + 1
-        message_modifie = message.replace(": ", f" ({n}e alerte) : ", 1)
-        send_telegram_alert(message_modifie)
-        enregistrer_alerte(token_address, type_alerte)
+                if not alerte_deja_envoyee(token_address, type_alerte):
+                    if is_hausse:
+                        dernier_mcap = dernier_mcap_alerte_hausse(token_address)
+                        if token["marketcap"] < dernier_mcap:
+                            print(f"[🔕] Alerte haussière ignorée (mcap {token['marketcap']} < {dernier_mcap}) pour {token.get('nom_jeton')}")
+                            continue
+
+                    n = nombre_alertes_envoyees(token_address) + 1
+                    message_modifie = message.replace(": ", f" ({n}e alerte) : ", 1)
+                    send_telegram_alert(message_modifie)
+                    enregistrer_alerte(token_address, type_alerte)
                 else:
                     print(f"[🔕] Alerte ignorée (déjà envoyée) : {type_alerte} pour {token.get('nom_jeton')}")
 
