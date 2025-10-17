@@ -140,6 +140,37 @@ def detecter_scenarios(token, premier_prix, est_suivi):
             alerts.append(("chute_brutale", f"⚠️ *CHUTE BRUTALE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
 
     return alerts
+    
+
+
+# 🔍 Récupère le dernier marketcap d'une alerte haussière envoyée
+def dernier_mcap_alerte_hausse(token_address):
+    try:
+        result = supabase.table(TABLE_LOGS) \
+            .select("created_at") \
+            .eq("token_address", token_address) \
+            .in_("type_alerte", ["hausse_soudaine", "hausse_lente", "hausse_differee", "solidite", "hausse_continue_var5"]) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+        if result.data:
+            alerte_time = result.data[0]["created_at"]
+            # Va chercher le marketcap à ce moment-là
+            snap = supabase.table(TABLE_SUIVI) \
+                .select("marketcap") \
+                .eq("token_address", token_address) \
+                .lte("created_at", alerte_time) \
+                .order("created_at", desc=True) \
+                .limit(1) \
+                .execute()
+            if snap.data:
+                return snap.data[0]["marketcap"]
+    except Exception as e:
+        print(f"[ERREUR DERNIER MCAP] {e}")
+    return 0
+
+
+
 
 # ▶️ MAIN
 def main():
@@ -191,11 +222,19 @@ def main():
 
             # 🔁 Alertes classiques
             for type_alerte, message in scenarios:
-                if not alerte_deja_envoyee(token_address, type_alerte):
-                    n = nombre_alertes_envoyees(token_address) + 1
-                    message_modifie = message.replace(": ", f" ({n}e alerte) : ", 1)
-                    send_telegram_alert(message_modifie)
-                    enregistrer_alerte(token_address, type_alerte)
+    is_hausse = type_alerte in ["hausse_soudaine", "hausse_lente", "hausse_differee", "solidite", "hausse_continue_var5"]
+    
+    if not alerte_deja_envoyee(token_address, type_alerte):
+        if is_hausse:
+            dernier_mcap = dernier_mcap_alerte_hausse(token_address)
+            if token["marketcap"] < dernier_mcap:
+                print(f"[🔕] Alerte haussière ignorée (mcap {token['marketcap']} < {dernier_mcap}) pour {token.get('nom_jeton')}")
+                continue  # Ne pas envoyer si mcap est inférieur au dernier mcap alerté
+
+        n = nombre_alertes_envoyees(token_address) + 1
+        message_modifie = message.replace(": ", f" ({n}e alerte) : ", 1)
+        send_telegram_alert(message_modifie)
+        enregistrer_alerte(token_address, type_alerte)
                 else:
                     print(f"[🔕] Alerte ignorée (déjà envoyée) : {type_alerte} pour {token.get('nom_jeton')}")
 
