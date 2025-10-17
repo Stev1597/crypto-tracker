@@ -48,6 +48,17 @@ def alerte_deja_envoyee(token_address, type_alerte):
         print(f"[ERREUR VERIF LOG] {e}")
         return False
 
+
+# 🔢 Compte le nombre d'alertes déjà envoyées pour ce token
+def nombre_alertes_envoyees(token_address):
+    try:
+        result = supabase.table(TABLE_LOGS).select("id").eq("token_address", token_address).execute()
+        return len(result.data)
+    except Exception as e:
+        print(f"[ERREUR COMPTE ALERTES] {e}")
+        return 0
+
+
 # ✅ Enregistre l’envoi
 def enregistrer_alerte(token_address, type_alerte):
     try:
@@ -145,9 +156,11 @@ def main():
             scenarios = detecter_scenarios(token, premier_prix, est_suivi)
 
             for type_alerte, message in scenarios:
-                if not alerte_deja_envoyee(token_address, type_alerte):
-                    send_telegram_alert(message)
-                    enregistrer_alerte(token_address, type_alerte)
+             if not alerte_deja_envoyee(token_address, type_alerte):
+              n = nombre_alertes_envoyees(token_address) + 1
+               message_modifie = message.replace(": ", f" ({n}e alerte) : ", 1)
+                send_telegram_alert(message_modifie)
+                 enregistrer_alerte(token_address, type_alerte)
                 else:
                     print(f"[🔕] Alerte ignorée (déjà envoyée) : {type_alerte} pour {token.get('nom_jeton')}")
 
