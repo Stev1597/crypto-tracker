@@ -12,6 +12,11 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+
+# 📦 Suivi des prix maximums pour chaque token
+prix_max_token = {}  # 🆕 token_address → prix_max
+
+
 # 📊 Plages temporelles
 PLAGES = ["var_5", "var_15", "var_30", "var_45", "var_1h", "var_3h", "var_6h", "var_12h", "var_24h"]
 COOLDOWN_MINUTES = 10
@@ -149,12 +154,42 @@ def main():
 
         for token in tokens_uniques.values():
             token_address = token["token_address"]
+            prix_actuel = token.get("price")
+            est_suivi = est_suivi_personnellement(token_address)
+
+            # 🔼 Suivi du prix maximum (réinitialisé si nécessaire)
+            if prix_actuel:
+                if token_address not in prix_max_token:
+                    prix_max_token[token_address] = prix_actuel
+                else:
+                    if prix_actuel > prix_max_token[token_address]:
+                        prix_max_token[token_address] = prix_actuel
+
+            # 🧠 Analyse des scénarios classiques (hausses, solidité, etc.)
             premier = supabase.table(TABLE_SUIVI).select("price").eq("token_address", token_address).order("created_at").limit(1).execute().data
             premier_prix = premier[0]["price"] if premier else None
-
-            est_suivi = est_suivi_personnellement(token_address)
             scenarios = detecter_scenarios(token, premier_prix, est_suivi)
 
+            # ➕ Scénario supplémentaire : baisse depuis prix max (si suivi)
+            if est_suivi and prix_actuel and token_address in prix_max_token:
+                prix_max = prix_max_token[token_address]
+                baisse_pct = round((prix_actuel - prix_max) / prix_max * 100, 2)
+
+                if baisse_pct <= -30 and not alerte_deja_envoyee(token_address, "baisse_depuis_max_30"):
+                    n = nombre_alertes_envoyees(token_address) + 1
+                    send_telegram_alert(
+                        f"📉 *CHUTE -30%* (depuis max) : {token.get('nom_jeton')} ({n}e alerte)\n*Prix max* : {prix_max:.4f} ➡ *Actuel* : {prix_actuel:.4f}\n🔗 [Trader sur Axiom](https://axiom.trade/meme/{token.get('pair_address')})"
+                    )
+                    enregistrer_alerte(token_address, "baisse_depuis_max_30")
+
+                if baisse_pct <= -60 and not alerte_deja_envoyee(token_address, "baisse_depuis_max_60"):
+                    n = nombre_alertes_envoyees(token_address) + 1
+                    send_telegram_alert(
+                        f"⚠️ *CHUTE -60%* (depuis max) : {token.get('nom_jeton')} ({n}e alerte)\n*Prix max* : {prix_max:.4f} ➡ *Actuel* : {prix_actuel:.4f}\n🔗 [Trader sur Axiom](https://axiom.trade/meme/{token.get('pair_address')})"
+                    )
+                    enregistrer_alerte(token_address, "baisse_depuis_max_60")
+
+            # 🔁 Alertes classiques
             for type_alerte, message in scenarios:
                 if not alerte_deja_envoyee(token_address, type_alerte):
                     n = nombre_alertes_envoyees(token_address) + 1
