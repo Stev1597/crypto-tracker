@@ -156,11 +156,11 @@ def main():
             scenarios = detecter_scenarios(token, premier_prix, est_suivi)
 
             for type_alerte, message in scenarios:
-             if not alerte_deja_envoyee(token_address, type_alerte):
-              n = nombre_alertes_envoyees(token_address) + 1
-               message_modifie = message.replace(": ", f" ({n}e alerte) : ", 1)
-                send_telegram_alert(message_modifie)
-                 enregistrer_alerte(token_address, type_alerte)
+                if not alerte_deja_envoyee(token_address, type_alerte):
+                    n = nombre_alertes_envoyees(token_address) + 1
+                    message_modifie = message.replace(": ", f" ({n}e alerte) : ", 1)
+                    send_telegram_alert(message_modifie)
+                    enregistrer_alerte(token_address, type_alerte)
                 else:
                     print(f"[🔕] Alerte ignorée (déjà envoyée) : {type_alerte} pour {token.get('nom_jeton')}")
 
