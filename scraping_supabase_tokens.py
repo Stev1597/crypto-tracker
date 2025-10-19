@@ -70,13 +70,22 @@ def has_x_account(links):
 # ------------------ BDD ------------------ #
 def insert_detected_token(token_data):
     try:
+        # 🔒 Ne pas réinsérer si le token a déjà été supprimé
+        res = supabase.table("tokens_supprimes").select("token_address").eq("token_address", token_data["token_address"]).execute()
+        if res.data:
+            print(f"[IGNORÉ ❌] Token {token_data['token_address']} précédemment supprimé. Ignoré.")
+            return
+
+        # Vérification existence dans tokens_detectes
         existing = supabase.table("tokens_detectes") \
             .select("token_address") \
             .eq("token_address", token_data["token_address"]) \
             .execute()
+
         if existing.data:
-            print(f"[🔁 DÉJÀ PRÉSENT] {token_data['token_address']}")
+            print(f"[⚠️ DÉJÀ PRÉSENT] {token_data['token_address']}")
             return
+
         supabase.table("tokens_detectes").insert(token_data).execute()
         print(f"[INSÉRÉ ✅] {token_data['token_address']}")
     except Exception as e:
