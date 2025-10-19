@@ -133,16 +133,19 @@ def detecter_scenarios(token, premier_prix, est_suivi):
     except Exception as e:
         print(f"[ERREUR HAUSSE CONTINUE] {e}")
 
-    # 🔻 Alertes baissières uniquement si suivi personnellement
+    # 🔻 Alertes baissières personnalisées uniquement si suivi personnellement
     if est_suivi:
-        if token["var_1h"] and token["var_1h"] <= -30:
-            alerts.append(("baisse_30", f"🔻 *CHUTE -30%* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
-
-        if token["var_3h"] and token["var_3h"] <= -60:
-            alerts.append(("baisse_60", f"🔻 *CHUTE -60%* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
-
-        if token["var_1h"] and token["var_1h"] <= -80 or token["var_3h"] and token["var_3h"] <= -90:
-            alerts.append(("chute_brutale", f"⚠️ *CHUTE BRUTALE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+        seuils_baisse = list(range(30, 80, 5))  # [-30%, -35%, ..., -75%]
+        if token["price"] and premier_prix:
+            prix_max = prix_max_token.get(address, token["price"])
+            baisse_pct = round((token["price"] - prix_max) / prix_max * 100, 2)
+            for seuil in seuils_baisse:
+                type_alerte = f"baisse_depuis_max_{seuil}"
+                if baisse_pct <= -seuil and not alerte_deja_envoyee(address, type_alerte):
+                    alerts.append((
+                        type_alerte,
+                        f"🔻 *CHUTE -{seuil}%* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"
+                    ))
 
     return alerts
     
