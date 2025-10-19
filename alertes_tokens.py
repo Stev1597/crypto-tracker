@@ -103,7 +103,7 @@ def detecter_scenarios(token, premier_prix, est_suivi):
     # Vérification du multiplicateur avant d’envoyer l’alerte
     if multiplicateur <= 1:
     print(f"[IGNORÉ] Multiplicateur trop faible ({multiplicateur}) pour {token_name}")
-    continue
+    return []
 
     # 🔺 Alertes haussières pour tous
     if token["var_15"] and token["var_15"] >= 100 or token["var_1h"] and token["var_1h"] >= 200:
