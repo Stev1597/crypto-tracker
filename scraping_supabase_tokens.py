@@ -104,6 +104,14 @@ def process_token(token):
         print(f"[⛔️ NON SOLANA] {token.get('tokenAddress')} — ignoré.")
         return
 
+    # Si le token n'a pas de nom ou de description, on l’ignore
+    name = token.get("description", "").strip()
+    if not name or name.lower() in ["n/a", ""]:
+        print(f"[REJETÉ ❌] Token sans nom/description : {token.get('tokenAddress')}")
+        return
+
+
+
     address = token.get("tokenAddress")
     name = token.get("description", "N/A")
     dex_url = token.get("url", "N/A")
