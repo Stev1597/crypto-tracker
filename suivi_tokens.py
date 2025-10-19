@@ -210,11 +210,18 @@ def should_remove_token(token_address):
 
 
 def remove_token_completely(token_address):
-    """Supprime le token des tables de suivi"""
+    """Supprime le token des tables de suivi, et l'enregistre comme supprimé"""
     try:
+        # 🔒 Enregistrement dans la table des tokens supprimés
+        supabase.table("tokens_supprimes").upsert({
+            "token_address": token_address,
+            "deleted_at": datetime.utcnow().isoformat()
+        }).execute()
+
+        # ❌ Suppression du token
         supabase.table("suivi_tokens").delete().eq("token_address", token_address).execute()
         supabase.table("tokens_detectes").delete().eq("token_address", token_address).execute()
-        print(f"[🚫] Token supprimé : {token_address}")
+        print(f"🗑️ Token supprimé et enregistré comme supprimé : {token_address}")
     except Exception as e:
         print(f"[ERREUR SUPPRESSION TOKEN] {e}")
 
