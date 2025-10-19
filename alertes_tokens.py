@@ -100,10 +100,10 @@ def detecter_scenarios(token, premier_prix, est_suivi):
     heures = int((datetime.now(timezone.utc) - debut).total_seconds() // 3600)
     multiplicateur = round(prix_actuel / premier_prix, 2) if premier_prix else "?"
 
-    # Vérification du multiplicateur avant d’envoyer l’alerte
-    if multiplicateur <= 1:
-    print(f"[IGNORÉ] Multiplicateur trop faible ({multiplicateur}) pour {token_name}")
-    return []
+    # ⛔️ Ignorer si multiplicateur <= 1
+    if isinstance(multiplicateur, (int, float)) and multiplicateur <= 1:
+        print(f"[IGNORÉ] Multiplicateur trop faible ({multiplicateur}) pour {name}")
+        return []
 
     # 🔺 Alertes haussières pour tous
     if token["var_15"] and token["var_15"] >= 100 or token["var_1h"] and token["var_1h"] >= 200:
