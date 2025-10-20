@@ -178,11 +178,38 @@ def dernier_mcap_alerte_hausse(token_address):
     return 0
 
 
+def mettre_a_jour_date_suivi():
+    try:
+        result = supabase.table("tokens_suivis_personnels") \
+            .select("token_address, date_suivi") \
+            .eq("suivi", "oui") \
+            .is_("date_suivi", "null") \
+            .execute()
+
+        tokens_a_mettre_a_jour = result.data
+
+        if not tokens_a_mettre_a_jour:
+            return
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        for token in tokens_a_mettre_a_jour:
+            address = token["token_address"]
+            supabase.table("tokens_suivis_personnels").update({
+                "date_suivi": now
+            }).eq("token_address", address).execute()
+            print(f"🕒 Date de suivi ajoutée pour {address}")
+
+    except Exception as e:
+        print(f"[ERREUR DATE_SUIVI] {e}")
+
+
 
 
 # ▶️ MAIN
 def main():
     print(f"\n[🔔 CYCLE ALERTES] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    mettre_a_jour_date_suivi()  # ⬅️ Ajoute cette ligne ici
     try:
         rows = supabase.table(TABLE_SUIVI).select("*").order("created_at", desc=True).execute().data
         tokens_uniques = {}
