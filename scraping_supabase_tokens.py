@@ -15,12 +15,12 @@ ALLOWED_DEXES = ["pumpswap", "raydium"]
 # ------------------ UTILS ------------------ #
 def get_top10_hold_percent(token_address):
     try:
-        url = f"https://public-api.solscan.io/token/holders?tokenAddress={token_address}&limit=10"
+        url = f"https://public-api.solscan.io/v1.0/token/holders?tokenAddress={token_address}&limit=10"
         headers = {
             "accept": "application/json",
-            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjcmVhdGVkQXQiOjE3NjA5OTI3MjQyMTcsImVtYWlsIjoic3RldmVuZGFiZXNjYXQxNUBnbWFpbC5jb20iLCJhY3Rpb24iOiJ0b2tlbi1hcGkiLCJhcGlWZXJzaW9uIjoidjIiLCJpYXQiOjE3NjA5OTI3MjR9.M_yh_eyXhA4MRWqq0QbCRM6iODnnDgmBW47FHCn7V7E"  # 👈 Remplace ici
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjcmVhdGVkQXQiOjE3NjA5OTI3MjQyMTcsImVtYWlsIjoic3RldmVuZGFiZXNjYXQxNUBnbWFpbC5jb20iLCJhY3Rpb24iOiJ0b2tlbi1hcGkiLCJhcGlWZXJzaW9uIjoidjIiLCJpYXQiOjE3NjA5OTI3MjR9.M_yh_eyXhA4MRWqq0QbCRM6iODnnDgmBW47FHCn7V7E"  # 🔁 Remplace par ta clé API réelle
         }
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
 
         if response.status_code == 200:
             data = response.json()
@@ -28,9 +28,9 @@ def get_top10_hold_percent(token_address):
             for holder in data.get("data", []):
                 percent = holder.get("percent", 0)
                 total_percent += percent
-            return total_percent
+            return round(total_percent, 2)  # 👉 pour ne pas avoir trop de décimales
         else:
-            print(f"[❌ ERREUR SOLSCAN] Token {token_address} — Code {response.status_code}")
+            print(f"[❌ ERREUR SOLSCAN] Token {token_address} — Code {response.status_code} — Réponse : {response.text}")
     except Exception as e:
         print(f"[❌ EXCEPTION SOLSCAN] Token {token_address} — {e}")
     return None
