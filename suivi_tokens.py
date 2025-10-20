@@ -215,7 +215,7 @@ def remove_token_completely(token_address):
         # 🔒 Enregistrement dans la table des tokens supprimés
         supabase.table("tokens_supprimes").upsert({
             "token_address": token_address,
-            "deleted_at": datetime.utcnow().isoformat()
+            "deleted_at": datetime.now(timezone.utc).isoformat()
         }).execute()
 
         # ❌ Suppression du token
