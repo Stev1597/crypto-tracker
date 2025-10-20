@@ -209,7 +209,7 @@ def mettre_a_jour_date_suivi():
 # ▶️ MAIN
 def main():
     print(f"\n[🔔 CYCLE ALERTES] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    mettre_a_jour_date_suivi()  # ⬅️ Ajoute cette ligne ici
+    mettre_a_jour_date_suivi()  # Met à jour la date_suivi si manquante
     try:
         rows = supabase.table(TABLE_SUIVI).select("*").order("created_at", desc=True).execute().data
         tokens_uniques = {}
@@ -254,6 +254,37 @@ def main():
                         f"⚠️ *CHUTE -60%* (depuis max) : {token.get('nom_jeton')} ({n}e alerte)\n*Prix max* : {prix_max:.4f} ➡ *Actuel* : {prix_actuel:.4f}\n🔗 [Trader sur Axiom](https://axiom.trade/meme/{token.get('pair_address')})"
                     )
                     enregistrer_alerte(token_address, "baisse_depuis_max_60")
+
+            # ✅ NOUVELLE LOGIQUE : ALERTE BAISSE SELON DATE_SUIVI
+            if est_suivi and prix_actuel:
+                # On récupère la date d'entrée
+                suivi = supabase.table(TABLE_PERSO).select("date_suivi", "prix_entree").eq("token_address", token_address).execute()
+                if suivi.data:
+                    date_suivi = suivi.data[0].get("date_suivi")
+                    prix_entree = suivi.data[0].get("prix_entree")
+
+                    if date_suivi:
+                        # Récupère le prix le plus proche de la date_suivi
+                        snap = supabase.table(TABLE_SUIVI).select("price") \
+                            .eq("token_address", token_address) \
+                            .lte("created_at", date_suivi) \
+                            .order("created_at", desc=True) \
+                            .limit(1).execute()
+
+                        if snap.data and snap.data[0].get("price"):
+                            prix_base = snap.data[0]["price"]
+                            multiplicateur = round(prix_actuel / prix_base, 2)
+
+                            baisse_pct = round((prix_actuel - prix_base) / prix_base * 100, 2)
+
+                            for seuil in range(-30, -80, 5):
+                                type_alerte = f"baisse_{abs(seuil)}"
+                                if baisse_pct <= seuil and not alerte_deja_envoyee(token_address, type_alerte):
+                                    n = nombre_alertes_envoyees(token_address) + 1
+                                    send_telegram_alert(
+                                        f"📉 *CHUTE {seuil}%* : {token.get('nom_jeton')} ({n}e alerte)\n*MCAP* : {int(token['marketcap']):,} $\n*x{multiplicateur}* depuis suivi perso\n🔗 [Trader sur Axiom](https://axiom.trade/meme/{token.get('pair_address')})"
+                                    )
+                                    enregistrer_alerte(token_address, type_alerte)
 
             # 🔁 Alertes classiques (hausses et autres)
             for type_alerte, message in scenarios:
