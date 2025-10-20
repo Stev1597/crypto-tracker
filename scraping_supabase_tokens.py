@@ -16,7 +16,10 @@ ALLOWED_DEXES = ["pumpswap", "raydium"]
 def get_top10_hold_percent(token_address):
     try:
         url = f"https://public-api.solscan.io/token/holders?tokenAddress={token_address}&limit=10"
-        headers = {"accept": "application/json"}
+        headers = {
+            "accept": "application/json",
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjcmVhdGVkQXQiOjE3NjA5OTI3MjQyMTcsImVtYWlsIjoic3RldmVuZGFiZXNjYXQxNUBnbWFpbC5jb20iLCJhY3Rpb24iOiJ0b2tlbi1hcGkiLCJhcGlWZXJzaW9uIjoidjIiLCJpYXQiOjE3NjA5OTI3MjR9.M_yh_eyXhA4MRWqq0QbCRM6iODnnDgmBW47FHCn7V7E"  # 👈 Remplace ici
+        }
         response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
