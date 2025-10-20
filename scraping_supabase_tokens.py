@@ -13,6 +13,26 @@ MARKETCAP_MIN = 20000
 ALLOWED_DEXES = ["pumpswap", "raydium"]
 
 # ------------------ UTILS ------------------ #
+def get_top10_hold_percent(token_address):
+    try:
+        url = f"https://public-api.solscan.io/token/holders?tokenAddress={token_address}&limit=10"
+        headers = {"accept": "application/json"}
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            total_percent = 0.0
+            for holder in data.get("data", []):
+                percent = holder.get("percent", 0)
+                total_percent += percent
+            return total_percent
+        else:
+            print(f"[❌ ERREUR SOLSCAN] Token {token_address} — Code {response.status_code}")
+    except Exception as e:
+        print(f"[❌ EXCEPTION SOLSCAN] Token {token_address} — {e}")
+    return None
+
+
 def get_existing_tokens():
     try:
         detectes = supabase.table("tokens_detectes").select("token_address").execute()
@@ -126,6 +146,7 @@ def process_token(token):
     marketcap = float(pair_data.get("fdv", 0))
     pair_address = pair_data.get("pairAddress", "")  # ✅ NOUVEAU
     has_x = has_x_account(links)
+    top10_percent = get_top10_hold_percent(address)
 
     if not (liquidity >= LIQUIDITY_MIN and marketcap >= MARKETCAP_MIN and has_x):
         print(f"[IGNORÉ ❌] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
@@ -140,7 +161,8 @@ def process_token(token):
         "created_at": now,
         "liquidite": liquidity,
         "marketcap": marketcap,
-        "has_x_account": has_x
+        "has_x_account": has_x,
+        "top10_percent": top10_percent
     }
 
     insert_detected_token(token_data)
