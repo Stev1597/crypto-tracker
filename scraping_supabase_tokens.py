@@ -15,20 +15,27 @@ ALLOWED_DEXES = ["pumpswap", "raydium"]
 # ------------------ UTILS ------------------ #
 def get_top10_hold_percent(token_address):
     try:
-        url = f"https://solana-gateway.moralis.io/token/mainnet/{token_address}/top-holders?limit=10"
+        url = f"https://deep-index.moralis.io/api/v2.2/erc20/{token_address}/holders?chain=solana&limit=10"
         headers = {
-            "Accept": "application/json",
-            "X-API-Key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImQ1YzYwZjJjLWYwOTUtNDQyNS04NWZlLTU5N2FjNDJhYjBhMiIsIm9yZ0lkIjoiNDU4NzczIiwidXNlcklkIjoiNDcxOTk3IiwidHlwZUlkIjoiNjVlMjllNmEtZWRlOS00ZGRlLWIzMGQtOGExODA2YjJmZGFjIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NTIyMjMwODgsImV4cCI6NDkwNzk4MzA4OH0.qDcce8fW8tjaRQ5RupNun0HHasfMAG31i5fEHTVtcZo"  # Remplace par ta clé API Moralis
+            "accept": "application/json",
+            "X-API-Key": "TA_CLEF_API_MORALIS"  # remplace ici
         }
+        response = requests.get(url, headers=headers)
 
-        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            holders = data.get("result", [])
-            total_percent = sum([h.get("percentage", 0) for h in holders])
-            return total_percent
+
+            # ✅ DEBUG PRINT POUR COMPRENDRE LA STRUCTURE
+            print(f"[DEBUG MORALIS] {token_address} →\n{data}\n")
+
+            total_percent = 0.0
+            for holder in data.get("result", []):
+                percent = holder.get("percentage", 0)
+                total_percent += percent
+            return round(total_percent, 2)
+
         else:
-            print(f"[❌ MORALIS ERROR] {token_address} — Code {response.status_code}")
+            print(f"[❌ ERREUR MORALIS] {token_address} — Code {response.status_code}")
     except Exception as e:
         print(f"[❌ EXCEPTION MORALIS] {token_address} — {e}")
     return None
