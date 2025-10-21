@@ -13,7 +13,7 @@ MARKETCAP_MIN = 20000
 ALLOWED_DEXES = ["pumpswap", "raydium"]
 
 # ------------------ UTILS ------------------ #
-def get_top10_hold_percent_moralis(token_address):
+def get_top10_hold_percent(token_address):
     try:
         url = f"https://solana-gateway.moralis.io/token/mainnet/{token_address}/top-holders?limit=10"
         headers = {
