@@ -13,26 +13,24 @@ MARKETCAP_MIN = 20000
 ALLOWED_DEXES = ["pumpswap", "raydium"]
 
 # ------------------ UTILS ------------------ #
-def get_top10_hold_percent(token_address):
+def get_top10_hold_percent_moralis(token_address):
     try:
-        url = f"https://public-api.solscan.io/v1.0/token/holders?tokenAddress={token_address}&limit=10"
+        url = f"https://solana-gateway.moralis.io/token/mainnet/{token_address}/top-holders?limit=10"
         headers = {
-            "accept": "application/json",
-            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjcmVhdGVkQXQiOjE3NjA5OTI3MjQyMTcsImVtYWlsIjoic3RldmVuZGFiZXNjYXQxNUBnbWFpbC5jb20iLCJhY3Rpb24iOiJ0b2tlbi1hcGkiLCJhcGlWZXJzaW9uIjoidjIiLCJpYXQiOjE3NjA5OTI3MjR9.M_yh_eyXhA4MRWqq0QbCRM6iODnnDgmBW47FHCn7V7E"  # 🔁 Remplace par ta clé API réelle
+            "Accept": "application/json",
+            "X-API-Key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImQ1YzYwZjJjLWYwOTUtNDQyNS04NWZlLTU5N2FjNDJhYjBhMiIsIm9yZ0lkIjoiNDU4NzczIiwidXNlcklkIjoiNDcxOTk3IiwidHlwZUlkIjoiNjVlMjllNmEtZWRlOS00ZGRlLWIzMGQtOGExODA2YjJmZGFjIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NTIyMjMwODgsImV4cCI6NDkwNzk4MzA4OH0.qDcce8fW8tjaRQ5RupNun0HHasfMAG31i5fEHTVtcZo"  # Remplace par ta clé API Moralis
         }
-        response = requests.get(url, headers=headers, timeout=10)
 
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            total_percent = 0.0
-            for holder in data.get("data", []):
-                percent = holder.get("percent", 0)
-                total_percent += percent
-            return round(total_percent, 2)  # 👉 pour ne pas avoir trop de décimales
+            holders = data.get("result", [])
+            total_percent = sum([h.get("percentage", 0) for h in holders])
+            return total_percent
         else:
-            print(f"[❌ ERREUR SOLSCAN] Token {token_address} — Code {response.status_code} — Réponse : {response.text}")
+            print(f"[❌ MORALIS ERROR] {token_address} — Code {response.status_code}")
     except Exception as e:
-        print(f"[❌ EXCEPTION SOLSCAN] Token {token_address} — {e}")
+        print(f"[❌ EXCEPTION MORALIS] {token_address} — {e}")
     return None
 
 
