@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from supabase import create_client, Client
 
 # ------------------ CONFIG ------------------ #
+API_KEY = os.getenv("MORALIS_API_KEY")
 SUPABASE_URL = "https://mwnejkrkjlnrwrulqedd.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13bmVqa3JramxucndydWxxZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4OTc4NzYsImV4cCI6MjA2OTQ3Mzg3Nn0.6gCD-zi1nFK4m61bLBzYKmuE48ZqKOgVclelebO9vUk"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
