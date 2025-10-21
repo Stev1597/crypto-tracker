@@ -20,7 +20,7 @@ def get_top10_hold_percent(token_address):
         url = f"https://deep-index.moralis.io/api/v2.2/erc20/{token_address}/holders?chain=solana&limit=10"
         headers = {
             "accept": "application/json",
-            "X-API-Key": "TA_CLEF_API_MORALIS"  # remplace ici
+            "X-API-Key": API_KEY  # remplace ici
         }
         response = requests.get(url, headers=headers)
 
