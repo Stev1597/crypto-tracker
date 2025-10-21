@@ -1,5 +1,6 @@
 import requests
 import time
+import os
 from datetime import datetime, timezone
 from supabase import create_client, Client
 
