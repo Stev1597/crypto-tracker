@@ -34,6 +34,33 @@ def get_top10_hold_percent_moralis(token_address):
     return None
 
 
+def update_top10_percent_for_all():
+    try:
+        # Récupération de tous les tokens déjà détectés
+        tokens = supabase.table("tokens_detectes").select("token_address").execute()
+        if not tokens.data:
+            print("[ℹ️] Aucun token à mettre à jour.")
+            return
+
+        for t in tokens.data:
+            token_address = t["token_address"]
+            top10_percent = get_top10_hold_percent(token_address)
+
+            if top10_percent is not None:
+                supabase.table("tokens_detectes").update({
+                    "top10_percent": top10_percent
+                }).eq("token_address", token_address).execute()
+                print(f"[✅ Mis à jour] {token_address} → {top10_percent:.2f}%")
+            else:
+                print(f"[⚠️ Échec mise à jour] {token_address}")
+
+            # Petite pause pour éviter un rate limit Moralis
+            time.sleep(0.5)
+
+    except Exception as e:
+        print(f"[❌ ERREUR UPDATE TOP10] {e}")
+
+
 def get_existing_tokens():
     try:
         detectes = supabase.table("tokens_detectes").select("token_address").execute()
