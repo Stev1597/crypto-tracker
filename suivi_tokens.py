@@ -199,8 +199,8 @@ def should_remove_token(token_address):
 
         if max_mc > 0:
             drop = ((max_mc - current_mc) / max_mc) * 100
-            if drop >= 90:
-                print(f"[📉] Token a chuté de +90% (par rapport au max) : {token_address}")
+            if drop >= 85:
+                print(f"[📉] Token a chuté de +85% (par rapport au max) : {token_address}")
                 return True
 
         return False
