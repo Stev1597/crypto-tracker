@@ -22,6 +22,7 @@ def get_top10_hold_percent(token_address):
             "accept": "application/json",
             "X-API-Key": API_KEY  # remplace ici
         }
+        print(f"[🧪 DEBUG API CALL] Requête Moralis pour : {token_address}")
         response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
