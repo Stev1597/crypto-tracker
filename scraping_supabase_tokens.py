@@ -234,7 +234,7 @@ def purge_ignored_tokens():
     except Exception as e:
         print(f"[ERREUR PURGE] {e}")
 
-update_top10_percent_for_all()
+# update_top10_percent_for_all()
 
 # ------------------ BOUCLE PRINCIPALE ------------------ #
 while True:
