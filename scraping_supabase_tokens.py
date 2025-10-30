@@ -195,7 +195,7 @@ def process_token(token):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "raison": f"Top10 > 60% ({top10_percent}%)"
        }).execute()
-       return
+        return
 
 
     now = datetime.now(timezone.utc).isoformat()
