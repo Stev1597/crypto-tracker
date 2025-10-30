@@ -43,6 +43,33 @@ def get_holder_stats(token_address):
         return None
 
 
+def update_total_holders_for_all():
+    try:
+        tokens = supabase.table("tokens_detectes").select("token_address").execute()
+
+        if not tokens.data:
+            print("⚠️ Aucun token à mettre à jour.")
+            return
+
+        for t in tokens.data:
+            token_address = t["token_address"]
+            holder_stats = get_holder_stats(token_address)
+
+            if holder_stats and "total_holders" in holder_stats:
+                total_holders = holder_stats["total_holders"]
+                supabase.table("tokens_detectes").update({
+                    "total_holders": total_holders
+                }).eq("token_address", token_address).execute()
+                print(f"✅ total_holders mis à jour pour {token_address} → {total_holders}")
+            else:
+                print(f"❌ Échec mise à jour total_holders pour {token_address}")
+
+            time.sleep(0.5)  # Petite pause pour éviter les rate limits
+
+    except Exception as e:
+        print(f"[❌ ERREUR UPDATE HOLDERS] {e}")
+
+
 
 def get_existing_tokens():
     try:
@@ -227,6 +254,7 @@ def purge_ignored_tokens():
         print(f"[ERREUR PURGE] {e}")
 
 
+update_total_holders_for_all()
 
 # ------------------ BOUCLE PRINCIPALE ------------------ #
 while True:
