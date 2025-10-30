@@ -180,11 +180,13 @@ def process_token(token):
     marketcap = float(pair_data.get("fdv", 0))
     pair_address = pair_data.get("pairAddress", "")  # ✅ NOUVEAU
     has_x = has_x_account(links)
-    top10_percent = get_top10_hold_percent(address)
+    
 
     if not (liquidity >= LIQUIDITY_MIN and marketcap >= MARKETCAP_MIN and has_x):
         print(f"[IGNORÉ ❌] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
         return
+
+    top10_percent = get_top10_hold_percent(address)
 
     now = datetime.now(timezone.utc).isoformat()
     token_data = {
