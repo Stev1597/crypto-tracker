@@ -188,7 +188,7 @@ def process_token(token):
 
     top10_percent = get_top10_hold_percent(address)
 
-    if top10_percent is not None and top10_percent > 60:
+if top10_percent is not None and top10_percent > 60:
     print(f"[⚠️ SUPPRIMÉ - Top10 trop élevé] {address} → {top10_percent}%")
     supabase.table("tokens_ignores").insert({
         "token_address": address,
