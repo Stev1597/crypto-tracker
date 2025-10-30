@@ -168,7 +168,7 @@ def detecter_scenarios(token, premier_prix, est_suivi):
                 var5_str = ", ".join(f"{v:.1f}%" for v in var5_list)
                 alerts.append((
                     "hausse_continue_var5",
-                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*{count_15p}/5 à +15 %* • x{multiplicateur} ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"
+                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}*\n🔗 [Trader sur Axiom]({lien}){infos}"
                 ))
     except Exception as e:
         print(f"[ERREUR HAUSSE CONTINUE] {e}")
