@@ -91,20 +91,35 @@ def est_suivi_personnellement(token_address):
 def generer_infos_supplementaires(token):
     try:
         token_address = token.get("token_address", "N/A")
-        top10_percent = token.get("top10_percent", "?")
-        total_holders = token.get("total_holders", "?")
 
-        # 🔍 Récupération date de détection depuis `tokens_detectes`
-        detection = supabase.table("tokens_detectes") \
-            .select("created_at") \
+        # 🔍 Récupération des infos depuis `tokens_detectes`
+        infos = supabase.table("tokens_detectes") \
+            .select("top10_percent, total_holders, created_at") \
             .eq("token_address", token_address) \
             .order("created_at") \
             .limit(1) \
             .execute()
 
-        date_detect = "?" if not detection.data else detection.data[0]["created_at"][:10]
+        if infos.data:
+            top10_percent = infos.data[0].get("top10_percent", "?")
+            total_holders = infos.data[0].get("total_holders", "?")
+            date_detect = infos.data[0]["created_at"][:10] if infos.data[0].get("created_at") else "?"
+        else:
+            top10_percent = "?"
+            total_holders = "?"
+            date_detect = "?"
 
-        return f"\n📌 *Token address* : `{token_address}`\n📅 *Détecté le* : {date_detect}\n👥 *Holders* : {total_holders}\n🔟 *Top10* : {top10_percent:.1f}%"
+        # Formatage pour affichage plus lisible
+        holders_str = f"{int(total_holders):,}".replace(",", " ") if isinstance(total_holders, (int, float)) else str(total_holders)
+        top10_str = f"{float(top10_percent):.1f}%" if isinstance(top10_percent, (int, float)) else str(top10_percent)
+
+        return (
+            f"\n📌 *Token address* : `{token_address}`"
+            f"\n📅 *Détecté le* : {date_detect}"
+            f"\n👥 *Holders* : {holders_str}"
+            f"\n🔟 *Top10* : {top10_str}"
+        )
+
     except Exception as e:
         print(f"[ERREUR INFOS SUPP] {e}")
         return ""
