@@ -162,6 +162,7 @@ def process_token(token):
 
     
     holder_stats = get_holder_stats(address)
+    
     if not holder_stats:
     return
 
