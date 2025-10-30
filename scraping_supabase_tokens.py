@@ -15,56 +15,33 @@ MARKETCAP_MIN = 20000
 ALLOWED_DEXES = ["pumpswap", "raydium"]
 
 # ------------------ UTILS ------------------ #
-def get_top10_hold_percent(token_address):
+def get_holder_stats(token_address):
     try:
-        url = f"https://solana-gateway.moralis.io/token/mainnet/{token_address}/top-holders?limit=10"
+        url = f"https://solana-gateway.moralis.io/token/mainnet/holders/{token_address}"
         headers = {
-            "Accept": "application/json",
-            "X-API-Key": API_KEY
+            "accept": "application/json",
+            "X-API-Key": os.getenv("MORALIS_API_KEY")
         }
-        print(f"[🧪 DEBUG API CALL] Requête Moralis (top-holders) pour : {token_address}")
+
+        print(f"[📡 DEBUG API CALL] Requête Moralis (holders stats) pour : {token_address}")
         response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
             data = response.json()
-            print(f"[DEBUG MORALIS] {token_address} →\n{data}\n")
-
-            total_percent = 0.0
-            for holder in data.get("result", []):
-                percent = holder.get("percentageRelativeToTotalSupply", 0)
-                total_percent += percent
-            return round(total_percent, 2)
+            total_holders = data.get("totalHolders", 0)
+            top10_percent = data.get("holderSupply", {}).get("top10", {}).get("supplyPercent", 0)
+            return {
+                "total_holders": total_holders,
+                "top10_percent": round(top10_percent, 2)
+            }
         else:
-            print(f"[❌ ERREUR MORALIS] {token_address} — Code {response.status_code}")
-    except Exception as e:
-        print(f"[❌ EXCEPTION MORALIS] {token_address} — {e}")
-    return None
-
-def update_top10_percent_for_all():
-    try:
-        # Récupération de tous les tokens déjà détectés
-        tokens = supabase.table("tokens_detectes").select("token_address").execute()
-        if not tokens.data:
-            print("[ℹ️] Aucun token à mettre à jour.")
-            return
-
-        for t in tokens.data:
-            token_address = t["token_address"]
-            top10_percent = get_top10_hold_percent(token_address)
-
-            if top10_percent is not None:
-                supabase.table("tokens_detectes").update({
-                    "top10_percent": top10_percent
-                }).eq("token_address", token_address).execute()
-                print(f"[✅ Mis à jour] {token_address} → {top10_percent:.2f}%")
-            else:
-                print(f"[⚠️ Échec mise à jour] {token_address}")
-
-            # Petite pause pour éviter un rate limit Moralis
-            time.sleep(0.5)
+            print(f"[❌ ERREUR API Moralis] Code : {response.status_code}")
+            return None
 
     except Exception as e:
-        print(f"[❌ ERREUR UPDATE TOP10] {e}")
+        print(f"[❌ EXCEPTION Moralis] {token_address} — {e}")
+        return None
+
 
 
 def get_existing_tokens():
@@ -183,7 +160,14 @@ def process_token(token):
         print(f"[IGNORÉ ❌] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
         return
 
-    top10_percent = get_top10_hold_percent(address)
+    
+    holder_stats = get_holder_stats(address)
+    if not holder_stats:
+    return
+
+       top10_percent = holder_stats["top10_percent"]
+       total_holders = holder_stats["total_holders"]
+
 
     if top10_percent is not None and top10_percent > 60:
         print(f"[⚠️ SUPPRIMÉ - Top10 trop élevé] {address} → {top10_percent}%")
@@ -204,7 +188,8 @@ def process_token(token):
         "liquidite": liquidity,
         "marketcap": marketcap,
         "has_x_account": has_x,
-        "top10_percent": top10_percent
+        "top10_percent": top10_percent,
+        "total_holders": total_holders
     }
 
     insert_detected_token(token_data)
@@ -242,7 +227,7 @@ def purge_ignored_tokens():
     except Exception as e:
         print(f"[ERREUR PURGE] {e}")
 
-# update_top10_percent_for_all()
+
 
 # ------------------ BOUCLE PRINCIPALE ------------------ #
 while True:
