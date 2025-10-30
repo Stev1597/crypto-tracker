@@ -160,14 +160,13 @@ def process_token(token):
         print(f"[IGNORÉ ❌] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
         return
 
-    
+    # ✅ Appel à Moralis pour récupérer top10% et total_holders
     holder_stats = get_holder_stats(address)
-    
     if not holder_stats:
-    return
+        return
 
-       top10_percent = holder_stats["top10_percent"]
-       total_holders = holder_stats["total_holders"]
+    top10_percent = holder_stats["top10_percent"]
+    total_holders = holder_stats["total_holders"]
 
 
     if top10_percent is not None and top10_percent > 60:
