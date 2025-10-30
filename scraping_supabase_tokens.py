@@ -164,8 +164,6 @@ def process_token(token):
         print(f"[REJETÉ ❌] Token sans nom/description : {token.get('tokenAddress')}")
         return
 
-
-
     address = token.get("tokenAddress")
     name = token.get("description", "N/A")
     dex_url = token.get("url", "N/A")
@@ -180,7 +178,6 @@ def process_token(token):
     marketcap = float(pair_data.get("fdv", 0))
     pair_address = pair_data.get("pairAddress", "")  # ✅ NOUVEAU
     has_x = has_x_account(links)
-    
 
     if not (liquidity >= LIQUIDITY_MIN and marketcap >= MARKETCAP_MIN and has_x):
         print(f"[IGNORÉ ❌] {address} | LIQ: {liquidity} | MC: {marketcap} | X: {has_x}")
@@ -189,14 +186,13 @@ def process_token(token):
     top10_percent = get_top10_hold_percent(address)
 
     if top10_percent is not None and top10_percent > 60:
-       print(f"[⚠️ SUPPRIMÉ - Top10 trop élevé] {address} → {top10_percent}%")
-       supabase.table("tokens_ignores").insert({
-        "token_address": address,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "raison": f"Top10 > 60% ({top10_percent}%)"
-       }).execute()
+        print(f"[⚠️ SUPPRIMÉ - Top10 trop élevé] {address} → {top10_percent}%")
+        supabase.table("tokens_ignores").insert({
+            "token_address": address,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "raison": f"Top10 > 60% ({top10_percent}%)"
+        }).execute()
         return
-
 
     now = datetime.now(timezone.utc).isoformat()
     token_data = {
