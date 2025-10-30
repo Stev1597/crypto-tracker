@@ -254,7 +254,6 @@ def purge_ignored_tokens():
         print(f"[ERREUR PURGE] {e}")
 
 
-update_total_holders_for_all()
 
 # ------------------ BOUCLE PRINCIPALE ------------------ #
 while True:
