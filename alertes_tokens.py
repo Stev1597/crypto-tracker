@@ -87,6 +87,30 @@ def est_suivi_personnellement(token_address):
         print(f"[ERREUR VERIF SUIVI PERSO] {e}")
         return False
 
+
+def generer_infos_supplementaires(token):
+    try:
+        token_address = token.get("token_address", "N/A")
+        top10_percent = token.get("top10_percent", "?")
+        total_holders = token.get("total_holders", "?")
+
+        # 🔍 Récupération date de détection depuis `tokens_detectes`
+        detection = supabase.table("tokens_detectes") \
+            .select("created_at") \
+            .eq("token_address", token_address) \
+            .order("created_at") \
+            .limit(1) \
+            .execute()
+
+        date_detect = "?" if not detection.data else detection.data[0]["created_at"][:10]
+
+        return f"\n📌 *Token address* : `{token_address}`\n📅 *Détecté le* : {date_detect}\n👥 *Holders* : {total_holders}\n🔟 *Top10* : {top10_percent:.1f}%"
+    except Exception as e:
+        print(f"[ERREUR INFOS SUPP] {e}")
+        return ""
+
+
+
 # 🧠 Détection des alertes
 def detecter_scenarios(token, premier_prix, est_suivi):
     alerts = []
@@ -99,6 +123,7 @@ def detecter_scenarios(token, premier_prix, est_suivi):
     debut = datetime.fromisoformat(token["created_at"].replace("Z", "+00:00"))
     heures = int((datetime.now(timezone.utc) - debut).total_seconds() // 3600)
     multiplicateur = round(prix_actuel / premier_prix, 2) if premier_prix else "?"
+    infos = generer_infos_supplementaires(token)
 
     # ⛔️ Ignorer si multiplicateur <= 1
     if isinstance(multiplicateur, (int, float)) and multiplicateur <= 1:
@@ -107,16 +132,16 @@ def detecter_scenarios(token, premier_prix, est_suivi):
 
     # 🔺 Alertes haussières pour tous
     if token["var_15"] and token["var_15"] >= 100 or token["var_1h"] and token["var_1h"] >= 200:
-        alerts.append(("hausse_soudaine", f"🚀 *HAUSSE SOUDAINE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+        alerts.append(("hausse_soudaine", f"🚀 *HAUSSE SOUDAINE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"))
 
     elif token["var_6h"] and token["var_6h"] >= 300 or token["var_12h"] and token["var_12h"] >= 500:
-        alerts.append(("hausse_lente", f"📈 *HAUSSE LENTE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+        alerts.append(("hausse_lente", f"📈 *HAUSSE LENTE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"))
 
     elif token["var_1h"] and abs(token["var_1h"]) <= 5 and token["var_5"] and token["var_5"] >= 30:
-        alerts.append(("hausse_differee", f"⏳ *HAUSSE APRÈS STAGNATION* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+        alerts.append(("hausse_differee", f"⏳ *HAUSSE APRÈS STAGNATION* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"))
 
     elif all(token.get(p) and token[p] > 0 for p in PLAGES):
-        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"))
+        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"))
 
     # 🔺 Nouvelle alerte : hausse continue sur var_5
     try:
@@ -128,7 +153,7 @@ def detecter_scenarios(token, premier_prix, est_suivi):
                 var5_str = ", ".join(f"{v:.1f}%" for v in var5_list)
                 alerts.append((
                     "hausse_continue_var5",
-                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*{count_15p}/5 à +15 %* • x{multiplicateur} ({heures}h)\n🔗 [Trader sur Axiom]({lien})"
+                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*{count_15p}/5 à +15 %* • x{multiplicateur} ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"
                 ))
     except Exception as e:
         print(f"[ERREUR HAUSSE CONTINUE] {e}")
