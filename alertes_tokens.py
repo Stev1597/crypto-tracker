@@ -163,6 +163,7 @@ def detecter_scenarios(token, premier_prix, est_suivi):
     heures = int((datetime.now(timezone.utc) - debut).total_seconds() // 3600)
     multiplicateur = round(prix_actuel / premier_prix, 2) if premier_prix else "?"
     infos = generer_infos_supplementaires(token)
+    ligne_migration = verifier_migration_top10(token)
 
     # ⛔️ Ignorer si multiplicateur <= 1
     if isinstance(multiplicateur, (int, float)) and multiplicateur <= 1:
@@ -171,16 +172,16 @@ def detecter_scenarios(token, premier_prix, est_suivi):
 
     # 🔺 Alertes haussières pour tous
     if token["var_15"] and token["var_15"] >= 100 or token["var_1h"] and token["var_1h"] >= 200:
-        alerts.append(("hausse_soudaine", f"🚀 *HAUSSE SOUDAINE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"))
+        alerts.append(("hausse_soudaine", f"🚀 *HAUSSE SOUDAINE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"))
 
     elif token["var_6h"] and token["var_6h"] >= 300 or token["var_12h"] and token["var_12h"] >= 500:
-        alerts.append(("hausse_lente", f"📈 *HAUSSE LENTE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"))
+        alerts.append(("hausse_lente", f"📈 *HAUSSE LENTE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"))
 
     elif token["var_1h"] and abs(token["var_1h"]) <= 5 and token["var_5"] and token["var_5"] >= 30:
-        alerts.append(("hausse_differee", f"⏳ *HAUSSE APRÈS STAGNATION* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"))
+        alerts.append(("hausse_differee", f"⏳ *HAUSSE APRÈS STAGNATION* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"))
 
     elif all(token.get(p) and token[p] > 0 for p in PLAGES):
-        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}"))
+        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"))
 
     # 🔺 Nouvelle alerte : hausse continue sur var_5
     try:
@@ -192,7 +193,7 @@ def detecter_scenarios(token, premier_prix, est_suivi):
                 var5_str = ", ".join(f"{v:.1f}%" for v in var5_list)
                 alerts.append((
                     "hausse_continue_var5",
-                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}*\n🔗 [Trader sur Axiom]({lien}){infos}"
+                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}*\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"
                 ))
     except Exception as e:
         print(f"[ERREUR HAUSSE CONTINUE] {e}")
@@ -267,6 +268,50 @@ def mettre_a_jour_date_suivi():
     except Exception as e:
         print(f"[ERREUR DATE_SUIVI] {e}")
 
+
+def verifier_migration_top10(token):
+    try:
+        token_address = token.get("token_address")
+        if not token_address:
+            return ""
+
+        # 1. Lire la valeur initiale du top 10 depuis Supabase
+        res = supabase.table("tokens_detectes") \
+            .select("top10_percent") \
+            .eq("token_address", token_address) \
+            .limit(1) \
+            .execute()
+
+        if not res.data or not res.data[0].get("top10_percent"):
+            return ""
+
+        top10_initial = float(res.data[0]["top10_percent"])
+
+        # 2. Appel à l’API Moralis pour obtenir la valeur actuelle
+        stats = get_holder_stats(token_address)
+        if not stats or "top10_percent" not in stats:
+            return ""
+
+        top10_actuel = float(stats["top10_percent"])
+
+        # 3. Calcul de la variation
+        variation = top10_actuel - top10_initial
+
+        # 4. Niveau d’alerte selon la variation
+        if variation >= 40:
+            emoji = "🚨 DANGER"
+        elif variation >= 25:
+            emoji = "⚠️ Alerte"
+        elif variation >= 10:
+            emoji = "🔍 Migration"
+        else:
+            return ""
+
+        return f"\n{emoji} : Migration de liquidité vers le top 10 (+{variation:.1f} %)"
+
+    except Exception as e:
+        print(f"[ERREUR] Vérif migration top10 – {e}")
+        return ""
 
 
 
