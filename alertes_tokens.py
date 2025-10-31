@@ -103,11 +103,35 @@ def generer_infos_supplementaires(token):
         if infos.data:
             top10_percent = infos.data[0].get("top10_percent", "?")
             total_holders = infos.data[0].get("total_holders", "?")
-            date_detect = infos.data[0]["created_at"][:10] if infos.data[0].get("created_at") else "?"
+            created_at = infos.data[0].get("created_at")
+
+            if created_at:
+                try:
+                    dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    date_detect = dt.strftime("%d/%m/%Y à %H:%M")
+                except:
+                    date_detect = "?"
+            else:
+                date_detect = "?"
         else:
             top10_percent = "?"
             total_holders = "?"
             date_detect = "?"
+
+        # 💬 Formatage des valeurs pour affichage
+        holders_str = f"{int(total_holders):,}".replace(",", " ") if isinstance(total_holders, (int, float)) else str(total_holders)
+        top10_str = f"{float(top10_percent):.1f}%" if isinstance(top10_percent, (int, float)) else str(top10_percent)
+
+        return (
+            f"\n📌 *Token address* : `{token_address}`"
+            f"\n📅 *Détecté le* : {date_detect}"
+            f"\n👥 *Holders* : {holders_str}"
+            f"\n🔟 *Top10* : {top10_str}"
+        )
+
+    except Exception as e:
+        print(f"[ERREUR INFOS SUPP] {e}")
+        return ""
 
         # Formatage pour affichage plus lisible
         holders_str = f"{int(total_holders):,}".replace(",", " ") if isinstance(total_holders, (int, float)) else str(total_holders)
