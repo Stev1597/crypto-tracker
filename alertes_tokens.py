@@ -9,6 +9,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+MORALIS_API_KEY = os.environ.get("MORALIS_API_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -267,6 +268,36 @@ def mettre_a_jour_date_suivi():
 
     except Exception as e:
         print(f"[ERREUR DATE_SUIVI] {e}")
+
+
+
+def get_holder_stats(token_address):
+    try:
+        url = f"https://solana-gateway.moralis.io/token/mainnet/holders/{token_address}"
+        headers = {
+            "accept": "application/json",
+            "X-API-Key": MORALIS_API_KEY
+        }
+
+        print(f"[📡 DEBUG API CALL] Requête Moralis (holders stats) pour : {token_address}")
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            total_holders = data.get("totalHolders", 0)
+            top10_percent = data.get("holderSupply", {}).get("top10", {}).get("supplyPercent", 0)
+            return {
+                "total_holders": total_holders,
+                "top10_percent": round(top10_percent, 2)
+            }
+        else:
+            print(f"[❌ ERREUR API Moralis] Code : {response.status_code}")
+            return None
+
+    except Exception as e:
+        print(f"[❌ EXCEPTION Moralis] {token_address} — {e}")
+        return None
+
 
 
 def verifier_migration_top10(token):
