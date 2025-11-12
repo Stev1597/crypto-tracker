@@ -276,7 +276,7 @@ def get_holder_stats(token_address):
         url = f"https://solana-gateway.moralis.io/token/mainnet/holders/{token_address}"
         headers = {
             "accept": "application/json",
-            "X-API-Key": MORALIS_API_KEY
+            "X-API-Key": os.getenv("MORALIS_API_KEY")
         }
 
         print(f"[📡 DEBUG API CALL] Requête Moralis (holders stats) pour : {token_address}")
