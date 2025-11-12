@@ -217,7 +217,7 @@ def get_solana_tokens():
 
 def purge_ignored_tokens():
     try:
-        seuil = datetime.now(timezone.utc).timestamp() - 3 * 24 * 3600
+        seuil = datetime.now(timezone.utc).timestamp() - 24 * 3600
         date_limite = datetime.fromtimestamp(seuil).isoformat()
         supabase.table("tokens_ignores") \
             .delete() \
