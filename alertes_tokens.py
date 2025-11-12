@@ -382,7 +382,7 @@ def detecter_migration_top10():
 
 
 # ▶️ MAIN
-def main():
+def vérifier_alertes():
     print(f"\n[🔔 CYCLE ALERTES] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     mettre_a_jour_date_suivi()  # Met à jour la date_suivi si manquante
     try:
@@ -483,7 +483,6 @@ def main():
         print(f"[ERREUR PRINCIPALE] {e}")
 
 
-# 🕒 Initialisation du dernier check de migration
 last_migration_check = None
 
 def main():
