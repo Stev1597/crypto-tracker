@@ -346,6 +346,41 @@ def verifier_migration_top10(token):
 
 
 
+def detecter_migration_top10():
+    try:
+        result = supabase.table("tokens_suivis_personnels").select("*").eq("suivi", "oui").execute()
+        tokens = result.data
+
+        for token in tokens:
+            address = token.get("token_address")
+            nom = token.get("nom_jeton", "Token")
+            top10_initial = token.get("top10_percent_initial")
+
+            if top10_initial is None:
+                continue
+
+            # Appel Moralis pour top10 actuel
+            top10_actuel = get_holder_stats(address)
+
+            if top10_actuel is None:
+                continue
+
+            variation = round(top10_actuel - top10_initial, 2)
+
+            if variation >= 5:
+                message = (
+                    f"⚠️ *Suspicion de migration vers les top holders*\n\n"
+                    f"🪙 *{nom}*\n"
+                    f"📈 Top10 holders : {top10_initial}% → {top10_actuel}% (+{variation}%)\n"
+                    f"🔍 Adresse : `{address}`"
+                )
+                envoyer_alerte_telegram(message)
+
+    except Exception as e:
+        print(f"[ERREUR CHECK MIGRATION TOP10] {e}")
+
+
+
 # ▶️ MAIN
 def main():
     print(f"\n[🔔 CYCLE ALERTES] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -447,7 +482,26 @@ def main():
     except Exception as e:
         print(f"[ERREUR PRINCIPALE] {e}")
 
-# 🔁 Boucle infinie
-while True:
-    main()
-    time.sleep(60)
+
+# 🕒 Initialisation du dernier check de migration
+last_migration_check = None
+
+def main():
+    global last_migration_check
+
+    verifier_alertes()
+
+    now = datetime.now()
+    if last_migration_check is None or (now - last_migration_check).total_seconds() > 1800:
+        print("🔎 Check migration top 10 lancé...")
+        detecter_migration_top10()
+        last_migration_check = now
+    else:
+        print("⏳ Pas encore le moment pour le check top10.")
+
+
+# 🔁 Boucle infinie (toutes les 60 sec)
+if __name__ == "__main__":
+    while True:
+        main()
+        time.sleep(60)
