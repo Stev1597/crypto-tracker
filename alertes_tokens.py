@@ -13,10 +13,8 @@ MORALIS_API_KEY = os.environ.get("MORALIS_API_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-
 # 📦 Suivi des prix maximums pour chaque token
-prix_max_token = {}  # 🆕 token_address → prix_max
-
+prix_max_token = {}
 
 # 📊 Plages temporelles
 PLAGES = ["var_5", "var_15", "var_30", "var_45", "var_1h", "var_3h", "var_6h", "var_12h", "var_24h"]
@@ -54,7 +52,6 @@ def alerte_deja_envoyee(token_address, type_alerte):
         print(f"[ERREUR VERIF LOG] {e}")
         return False
 
-
 # 🔢 Compte le nombre d'alertes déjà envoyées pour ce token
 def nombre_alertes_envoyees(token_address):
     try:
@@ -63,7 +60,6 @@ def nombre_alertes_envoyees(token_address):
     except Exception as e:
         print(f"[ERREUR COMPTE ALERTES] {e}")
         return 0
-
 
 # ✅ Enregistre l’envoi
 def enregistrer_alerte(token_address, type_alerte):
@@ -76,24 +72,19 @@ def enregistrer_alerte(token_address, type_alerte):
     except Exception as e:
         print(f"[ERREUR INSERT LOG] {e}")
 
-# 🔎 Vérifie si token est suivi personnellement
+# ✅ Vérifie si le token est marqué comme suivi personnellement
 def est_suivi_personnellement(token_address):
     try:
         result = supabase.table(TABLE_PERSO).select("suivi") \
             .eq("token_address", token_address).execute()
-        if result.data and result.data[0].get("suivi", "").lower() == "oui":
-            return True
-        return False
+        return result.data and result.data[0].get("suivi", "").lower() == "oui"
     except Exception as e:
         print(f"[ERREUR VERIF SUIVI PERSO] {e}")
         return False
 
-
-def generer_infos_supplementaires(token):
+# 🔁 Récupère les infos initiales de détection
+def get_infos_initiales(token_address):
     try:
-        token_address = token.get("token_address", "N/A")
-
-        # 🔍 Récupération des infos depuis `tokens_detectes`
         infos = supabase.table("tokens_detectes") \
             .select("top10_percent, total_holders, created_at") \
             .eq("token_address", token_address) \
@@ -102,56 +93,55 @@ def generer_infos_supplementaires(token):
             .execute()
 
         if infos.data:
-            top10_percent = infos.data[0].get("top10_percent", "?")
-            total_holders = infos.data[0].get("total_holders", "?")
-            created_at = infos.data[0].get("created_at")
-
-            if created_at:
-                try:
-                    dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                    date_detect = dt.strftime("%d/%m/%Y à %H:%M")
-                except:
-                    date_detect = "?"
-            else:
-                date_detect = "?"
-        else:
-            top10_percent = "?"
-            total_holders = "?"
-            date_detect = "?"
-
-        # 💬 Formatage des valeurs pour affichage
-        holders_str = f"{int(total_holders):,}".replace(",", " ") if isinstance(total_holders, (int, float)) else str(total_holders)
-        top10_str = f"{float(top10_percent):.1f}%" if isinstance(top10_percent, (int, float)) else str(top10_percent)
-
-        return (
-            f"\n📌 *Token address* : `{token_address}`"
-            f"\n📅 *Détecté le* : {date_detect}"
-            f"\n👥 *Holders* : {holders_str}"
-            f"\n🔟 *Top10* : {top10_str}"
-        )
-
+            data = infos.data[0]
+            return {
+                "top10_percent": data.get("top10_percent", "?"),
+                "total_holders": data.get("total_holders", "?"),
+                "created_at": data.get("created_at", None)
+            }
     except Exception as e:
-        print(f"[ERREUR INFOS SUPP] {e}")
+        print(f"[ERREUR INFOS INITIALES] {e}")
+    return {}
+
+# 📡 Interroge Moralis pour les nouvelles infos
+def get_infos_actuelles(token_address):
+    try:
+        url = f"https://mainnet.g.alchemy.com/v2/{MORALIS_API_KEY}/getTokenHolderStats?address={token_address}"
+        headers = {
+            "accept": "application/json",
+            "X-API-Key": MORALIS_API_KEY
+        }
+        response = requests.get(f"https://deep-index.moralis.io/api/v2.2/erc20/{token_address}/holders", headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "top10_percent": data.get("top_10_holders_percent", "?"),
+                "total_holders": data.get("total_holders", "?")
+            }
+    except Exception as e:
+        print(f"[ERREUR MORALIS STATS] {e}")
+    return {}
+
+# 🔚 Génère le bloc avec flèches ➡️ à ajouter à la fin de chaque message
+def generer_bloc_fleches(token_address):
+    initial = get_infos_initiales(token_address)
+    actuel = get_infos_actuelles(token_address)
+
+    try:
+        holders_old = int(initial.get("total_holders", 0))
+        holders_new = int(actuel.get("total_holders", 0))
+        top10_old = float(initial.get("top10_percent", 0))
+        top10_new = float(actuel.get("top10_percent", 0))
+
+        holders_str = f"{holders_old:,}".replace(",", " ") + " ➡️ " + f"{holders_new:,}".replace(",", " ")
+        top10_str = f"{top10_old:.1f} % ➡️ {top10_new:.1f} %"
+
+        return f"\n👥 *Holders* : {holders_str}\n🔟 *Top10* : {top10_str}"
+    except Exception as e:
+        print(f"[ERREUR FORMATAGE FLÈCHES] {e}")
         return ""
 
-        # Formatage pour affichage plus lisible
-        holders_str = f"{int(total_holders):,}".replace(",", " ") if isinstance(total_holders, (int, float)) else str(total_holders)
-        top10_str = f"{float(top10_percent):.1f}%" if isinstance(top10_percent, (int, float)) else str(top10_percent)
 
-        return (
-            f"\n📌 *Token address* : `{token_address}`"
-            f"\n📅 *Détecté le* : {date_detect}"
-            f"\n👥 *Holders* : {holders_str}"
-            f"\n🔟 *Top10* : {top10_str}"
-        )
-
-    except Exception as e:
-        print(f"[ERREUR INFOS SUPP] {e}")
-        return ""
-
-
-
-# 🧠 Détection des alertes
 def detecter_scenarios(token, premier_prix, est_suivi):
     alerts = []
     name = token.get("nom_jeton") or "Token"
@@ -164,27 +154,24 @@ def detecter_scenarios(token, premier_prix, est_suivi):
     heures = int((datetime.now(timezone.utc) - debut).total_seconds() // 3600)
     multiplicateur = round(prix_actuel / premier_prix, 2) if premier_prix else "?"
     infos = generer_infos_supplementaires(token)
-    ligne_migration = verifier_migration_top10(token)
+    fleches = generer_bloc_fleches(address)
 
-    # ⛔️ Ignorer si multiplicateur <= 1
     if isinstance(multiplicateur, (int, float)) and multiplicateur <= 1:
         print(f"[IGNORÉ] Multiplicateur trop faible ({multiplicateur}) pour {name}")
         return []
 
-    # 🔺 Alertes haussières pour tous
     if token["var_15"] and token["var_15"] >= 100 or token["var_1h"] and token["var_1h"] >= 200:
-        alerts.append(("hausse_soudaine", f"🚀 *HAUSSE SOUDAINE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"))
+        alerts.append(("hausse_soudaine", f"🚀 *HAUSSE SOUDAINE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}{fleches}"))
 
     elif token["var_6h"] and token["var_6h"] >= 300 or token["var_12h"] and token["var_12h"] >= 500:
-        alerts.append(("hausse_lente", f"📈 *HAUSSE LENTE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"))
+        alerts.append(("hausse_lente", f"📈 *HAUSSE LENTE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}{fleches}"))
 
     elif token["var_1h"] and abs(token["var_1h"]) <= 5 and token["var_5"] and token["var_5"] >= 30:
-        alerts.append(("hausse_differee", f"⏳ *HAUSSE APRÈS STAGNATION* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"))
+        alerts.append(("hausse_differee", f"⏳ *HAUSSE APRÈS STAGNATION* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}{fleches}"))
 
     elif all(token.get(p) and token[p] > 0 for p in PLAGES):
-        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"))
+        alerts.append(("solidite", f"🧱 *TOKEN SOLIDE* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien}){infos}{fleches}"))
 
-    # 🔺 Nouvelle alerte : hausse continue sur var_5
     try:
         rows = supabase.table(TABLE_SUIVI).select("var_5").eq("token_address", address).order("created_at", desc=True).limit(5).execute().data
         var5_list = [r["var_5"] for r in rows if r.get("var_5") is not None]
@@ -194,197 +181,31 @@ def detecter_scenarios(token, premier_prix, est_suivi):
                 var5_str = ", ".join(f"{v:.1f}%" for v in var5_list)
                 alerts.append((
                     "hausse_continue_var5",
-                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}*\n🔗 [Trader sur Axiom]({lien}){infos}\n{ligne_migration}"
+                    f"⚡️ *HAUSSE RAPIDE EN COURS* : {name}\n`var_5` : [{var5_str}]\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}*\n🔗 [Trader sur Axiom]({lien}){infos}{fleches}"
                 ))
     except Exception as e:
         print(f"[ERREUR HAUSSE CONTINUE] {e}")
 
-    # 🔻 Alertes baissières personnalisées uniquement si suivi personnellement
+    # 🔻 Alertes de baisse sur tokens suivis personnellement
     if est_suivi:
-        seuils_baisse = list(range(30, 80, 5))  # [-30%, -35%, ..., -75%]
-        if token["price"] and premier_prix:
-            prix_max = prix_max_token.get(address, token["price"])
-            baisse_pct = round((token["price"] - prix_max) / prix_max * 100, 2)
-            for seuil in seuils_baisse:
-                type_alerte = f"baisse_depuis_max_{seuil}"
-                if baisse_pct <= -seuil and not alerte_deja_envoyee(address, type_alerte):
-                    alerts.append((
-                        type_alerte,
-                        f"🔻 *CHUTE -{seuil}%* : {name}\n*MCAP* : {int(mcap):,} $\n*x{multiplicateur}* depuis détection ({heures}h)\n🔗 [Trader sur Axiom]({lien})"
-                    ))
+        try:
+            result = supabase.table(TABLE_PERSO).select("prix_entree").eq("token_address", address).limit(1).execute()
+            if result.data:
+                prix_entree = result.data[0]["prix_entree"]
+                if prix_entree:
+                    variation = (prix_actuel - prix_entree) / prix_entree * 100
+                    seuils = [-30, -35, -40, -45, -50, -55, -60, -65, -70, -75]
+                    for s in seuils:
+                        if variation <= s and not alerte_deja_envoyee(address, f"baisse_{abs(s)}"):
+                            alerts.append((f"baisse_{abs(s)}", f"📉 *BAISSE* : {name}\n{round(variation, 2)} % depuis prix d’entrée\n🔗 [Trader sur Axiom]({lien}){infos}{fleches}"))
+                            break
+        except Exception as e:
+            print(f"[ERREUR BAISSE] {e}")
 
     return alerts
-    
 
-
-# 🔍 Récupère le dernier marketcap d'une alerte haussière envoyée
-def dernier_mcap_alerte_hausse(token_address):
-    try:
-        result = supabase.table(TABLE_LOGS) \
-            .select("created_at") \
-            .eq("token_address", token_address) \
-            .in_("type_alerte", ["hausse_soudaine", "hausse_lente", "hausse_differee", "solidite", "hausse_continue_var5"]) \
-            .order("created_at", desc=True) \
-            .limit(1) \
-            .execute()
-        if result.data:
-            alerte_time = result.data[0]["created_at"]
-            # Va chercher le marketcap à ce moment-là
-            snap = supabase.table(TABLE_SUIVI) \
-                .select("marketcap") \
-                .eq("token_address", token_address) \
-                .lte("created_at", alerte_time) \
-                .order("created_at", desc=True) \
-                .limit(1) \
-                .execute()
-            if snap.data:
-                return snap.data[0]["marketcap"]
-    except Exception as e:
-        print(f"[ERREUR DERNIER MCAP] {e}")
-    return 0
-
-
-def mettre_a_jour_date_suivi():
-    try:
-        result = supabase.table("tokens_suivis_personnels") \
-            .select("token_address, date_suivi") \
-            .eq("suivi", "oui") \
-            .is_("date_suivi", "null") \
-            .execute()
-
-        tokens_a_mettre_a_jour = result.data
-
-        if not tokens_a_mettre_a_jour:
-            return
-
-        now = datetime.now(timezone.utc).isoformat()
-
-        for token in tokens_a_mettre_a_jour:
-            address = token["token_address"]
-            supabase.table("tokens_suivis_personnels").update({
-                "date_suivi": now
-            }).eq("token_address", address).execute()
-            print(f"🕒 Date de suivi ajoutée pour {address}")
-
-    except Exception as e:
-        print(f"[ERREUR DATE_SUIVI] {e}")
-
-
-
-def get_holder_stats(token_address):
-    try:
-        url = f"https://solana-gateway.moralis.io/token/mainnet/holders/{token_address}"
-        headers = {
-            "accept": "application/json",
-            "X-API-Key": os.getenv("MORALIS_API_KEY")
-        }
-
-        print(f"[📡 DEBUG API CALL] Requête Moralis (holders stats) pour : {token_address}")
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 200:
-            data = response.json()
-            total_holders = data.get("totalHolders", 0)
-            top10_percent = data.get("holderSupply", {}).get("top10", {}).get("supplyPercent", 0)
-            return {
-                "total_holders": total_holders,
-                "top10_percent": round(top10_percent, 2)
-            }
-        else:
-            print(f"[❌ ERREUR API Moralis] Code : {response.status_code}")
-            return None
-
-    except Exception as e:
-        print(f"[❌ EXCEPTION Moralis] {token_address} — {e}")
-        return None
-
-
-
-def verifier_migration_top10(token):
-    try:
-        token_address = token.get("token_address")
-        if not token_address:
-            return ""
-
-        # 1. Lire la valeur initiale du top 10 depuis Supabase
-        res = supabase.table("tokens_detectes") \
-            .select("top10_percent") \
-            .eq("token_address", token_address) \
-            .limit(1) \
-            .execute()
-
-        if not res.data or not res.data[0].get("top10_percent"):
-            return ""
-
-        top10_initial = float(res.data[0]["top10_percent"])
-
-        # 2. Appel à l’API Moralis pour obtenir la valeur actuelle
-        stats = get_holder_stats(token_address)
-        if not stats or "top10_percent" not in stats:
-            return ""
-
-        top10_actuel = float(stats["top10_percent"])
-
-        # 3. Calcul de la variation
-        variation = top10_actuel - top10_initial
-
-        # 4. Niveau d’alerte selon la variation
-        if variation >= 40:
-            emoji = "🚨 DANGER"
-        elif variation >= 25:
-            emoji = "⚠️ Alerte"
-        elif variation >= 10:
-            emoji = "🔍 Migration"
-        else:
-            return ""
-
-        return f"\n{emoji} : Migration de liquidité vers le top 10 (+{variation:.1f} %)"
-
-    except Exception as e:
-        print(f"[ERREUR] Vérif migration top10 – {e}")
-        return ""
-
-
-
-def detecter_migration_top10():
-    try:
-        result = supabase.table("tokens_suivis_personnels").select("*").eq("suivi", "oui").execute()
-        tokens = result.data
-
-        for token in tokens:
-            address = token.get("token_address")
-            nom = token.get("nom_jeton", "Token")
-            top10_initial = token.get("top10_percent_initial")
-
-            if top10_initial is None:
-                continue
-
-            # Appel Moralis pour top10 actuel
-            top10_actuel = get_holder_stats(address)
-
-            if top10_actuel is None:
-                continue
-
-            variation = round(top10_actuel - top10_initial, 2)
-
-            if variation >= 5:
-                message = (
-                    f"⚠️ *Suspicion de migration vers les top holders*\n\n"
-                    f"🪙 *{nom}*\n"
-                    f"📈 Top10 holders : {top10_initial}% → {top10_actuel}% (+{variation}%)\n"
-                    f"🔍 Adresse : `{address}`"
-                )
-                envoyer_alerte_telegram(message)
-
-    except Exception as e:
-        print(f"[ERREUR CHECK MIGRATION TOP10] {e}")
-
-
-
-# ▶️ MAIN
 def verifier_alertes():
     print(f"\n[🔔 CYCLE ALERTES] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    mettre_a_jour_date_suivi()  # Met à jour la date_suivi si manquante
     try:
         rows = supabase.table(TABLE_SUIVI).select("*").order("created_at", desc=True).execute().data
         tokens_uniques = {}
@@ -406,64 +227,12 @@ def verifier_alertes():
                     if prix_actuel > prix_max_token[token_address]:
                         prix_max_token[token_address] = prix_actuel
 
-            # 🧠 Analyse des scénarios classiques (hausses, solidité, etc.)
             premier = supabase.table(TABLE_SUIVI).select("price").eq("token_address", token_address).order("created_at").limit(1).execute().data
             premier_prix = premier[0]["price"] if premier else None
             scenarios = detecter_scenarios(token, premier_prix, est_suivi)
 
-            # ➕ Scénario supplémentaire : baisse depuis prix max
-            if est_suivi and prix_actuel and token_address in prix_max_token:
-                prix_max = prix_max_token[token_address]
-                baisse_pct = round((prix_actuel - prix_max) / prix_max * 100, 2)
-
-                if baisse_pct <= -30 and not alerte_deja_envoyee(token_address, "baisse_depuis_max_30"):
-                    n = nombre_alertes_envoyees(token_address) + 1
-                    send_telegram_alert(
-                        f"📉 *CHUTE -30%* (depuis max) : {token.get('nom_jeton')} ({n}e alerte)\n*Prix max* : {prix_max:.4f} ➡ *Actuel* : {prix_actuel:.4f}\n🔗 [Trader sur Axiom](https://axiom.trade/meme/{token.get('pair_address')})"
-                    )
-                    enregistrer_alerte(token_address, "baisse_depuis_max_30")
-
-                if baisse_pct <= -60 and not alerte_deja_envoyee(token_address, "baisse_depuis_max_60"):
-                    n = nombre_alertes_envoyees(token_address) + 1
-                    send_telegram_alert(
-                        f"⚠️ *CHUTE -60%* (depuis max) : {token.get('nom_jeton')} ({n}e alerte)\n*Prix max* : {prix_max:.4f} ➡ *Actuel* : {prix_actuel:.4f}\n🔗 [Trader sur Axiom](https://axiom.trade/meme/{token.get('pair_address')})"
-                    )
-                    enregistrer_alerte(token_address, "baisse_depuis_max_60")
-
-            # ✅ NOUVELLE LOGIQUE : ALERTE BAISSE SELON DATE_SUIVI
-            if est_suivi and prix_actuel:
-                # On récupère la date d'entrée
-                suivi = supabase.table(TABLE_PERSO).select("date_suivi", "prix_entree").eq("token_address", token_address).execute()
-                if suivi.data:
-                    date_suivi = suivi.data[0].get("date_suivi")
-                    prix_entree = suivi.data[0].get("prix_entree")
-
-                    if date_suivi:
-                        # Récupère le prix le plus proche de la date_suivi
-                        snap = supabase.table(TABLE_SUIVI).select("price") \
-                            .eq("token_address", token_address) \
-                            .lte("created_at", date_suivi) \
-                            .order("created_at", desc=True) \
-                            .limit(1).execute()
-
-                        if snap.data and snap.data[0].get("price"):
-                            prix_base = snap.data[0]["price"]
-                            multiplicateur = round(prix_actuel / prix_base, 2)
-
-                            baisse_pct = round((prix_actuel - prix_base) / prix_base * 100, 2)
-
-                            for seuil in range(-30, -80, 5):
-                                type_alerte = f"baisse_{abs(seuil)}"
-                                if baisse_pct <= seuil and not alerte_deja_envoyee(token_address, type_alerte):
-                                    n = nombre_alertes_envoyees(token_address) + 1
-                                    send_telegram_alert(
-                                        f"📉 *CHUTE {seuil}%* : {token.get('nom_jeton')} ({n}e alerte)\n*MCAP* : {int(token['marketcap']):,} $\n*x{multiplicateur}* depuis suivi perso\n🔗 [Trader sur Axiom](https://axiom.trade/meme/{token.get('pair_address')})"
-                                    )
-                                    enregistrer_alerte(token_address, type_alerte)
-
-            # 🔁 Alertes classiques (hausses et autres)
             for type_alerte, message in scenarios:
-                is_hausse = type_alerte in ["hausse_soudaine", "hausse_lente", "hausse_differee", "solidite", "hausse_continue_var5"]
+                is_hausse = type_alerte.startswith("hausse")
 
                 if not alerte_deja_envoyee(token_address, type_alerte):
                     if is_hausse:
@@ -482,24 +251,10 @@ def verifier_alertes():
     except Exception as e:
         print(f"[ERREUR PRINCIPALE] {e}")
 
-
-last_migration_check = None
-
+# ▶️ BOUCLE PRINCIPALE
 def main():
-    global last_migration_check
-
     verifier_alertes()
 
-    now = datetime.now()
-    if last_migration_check is None or (now - last_migration_check).total_seconds() > 1800:
-        print("🔎 Check migration top 10 lancé...")
-        detecter_migration_top10()
-        last_migration_check = now
-    else:
-        print("⏳ Pas encore le moment pour le check top10.")
-
-
-# 🔁 Boucle infinie (toutes les 60 sec)
 if __name__ == "__main__":
     while True:
         main()
