@@ -38,17 +38,17 @@ def recheck_tokens():
     print(f"\n🔄 Recheck lancé à {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     try:
-        result = supabase.table("TokenIgnore").select("*").execute()
+        result = supabase.table("tokens_ignores").select("*").execute()
         tokens = result.data
 
         for token in tokens:
-            address = token.get("TokenAddress")
-            created_at = datetime.fromisoformat(token.get("CreatedAt").replace("Z", "+00:00"))
+            address = token.get("token_address")
+            created_at = datetime.fromisoformat(token.get("created_at").replace("Z", "+00:00"))
             age = datetime.now(timezone.utc) - created_at
 
             # 🕒 Suppression après 2h
             if age > DUREE_MAX_ATTENTE:
-                supabase.table("TokenIgnore").delete().eq("TokenAddress", address).execute()
+                supabase.table("tokens_ignores").delete().eq("token_address", address).execute()
                 print(f"🗑 Supprimé après 2h sans données : {address}")
                 continue
 
@@ -109,7 +109,7 @@ def recheck_tokens():
             print(f"✅ Inséré dans tokens_detectes : {token_name} ({address})")
 
             # ❌ Suppression de TokenIgnore après succès
-            supabase.table("TokenIgnore").delete().eq("TokenAddress", address).execute()
+            supabase.table("tokens_ignores").delete().eq("token_address", address).execute()
 
     except Exception as e:
         print(f"[ERREUR RECHECK] {e}")
