@@ -121,8 +121,8 @@ def generer_infos_supplementaires(token):
             date_detect = "?"
 
         # 💬 Formatage des valeurs pour affichage
-        holders_str = f"{int(total_holders):,}".replace(",", " ") if isinstance(total_holders, (int, float)) else str(total_holders)
-        top10_str = f"{float(top10_percent):.1f}%" if isinstance(top10_percent, (int, float)) else str(top10_percent)
+        holders_str = f"{int(total_holders):,}".replace(",", " ") if isinstance(total_holders, (int, float)) and total_holders is not None else str(total_holders)
+        top10_str = f"{float(top10_percent):.1f}%" if isinstance(top10_percent, (int, float)) and top10_percent is not None else str(top10_percent)
 
         return (
             f"\n📌 *Token address* : `{token_address}`"
