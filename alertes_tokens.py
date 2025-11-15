@@ -115,25 +115,47 @@ def generer_infos_supplementaires(token):
                     date_detect = "?"
             else:
                 date_detect = "?"
+
+            try:
+                if isinstance(total_holders, (int, float)):
+                    holders_str = f"{int(total_holders):,}".replace(",", " ")
+                else:
+                    holders_str = str(total_holders) if total_holders else "?"
+
+                if isinstance(top10_percent, (int, float)):
+                    top10_str = f"{float(top10_percent):.1f}%"
+                else:
+                    top10_str = str(top10_percent) if top10_percent else "?"
+
+                if holders_updated is not None:
+                    holders_str += f" ➡️ {holders_updated}"
+                if top_updated is not None:
+                    top10_str += f" ➡️ {top_updated}"
+
+                return (
+                    f"\n📌 *Token address* : `{token_address}`"
+                    f"\n🕵️‍♂️ *Détecté le* : {date_detect}"
+                    f"\n👥 *Holders* : {holders_str}"
+                    f"\n🔟 *Top10* : {top10_str}"
+                )
+
+            except Exception as e:
+                print(f"[ERREUR FORMATAGE INFOS SUPP] {e}")
+                return ""
+
         else:
-            top10_percent = "?"
-            total_holders = "?"
-            date_detect = "?"
-
-        # 💬 Formatage des valeurs pour affichage
-        holders_str = f"{int(total_holders):,}".replace(",", " ") if isinstance(total_holders, (int, float)) and total_holders is not None else str(total_holders)
-        top10_str = f"{float(top10_percent):.1f}%" if isinstance(top10_percent, (int, float)) and top10_percent is not None else str(top10_percent)
-
-        return (
-            f"\n📌 *Token address* : `{token_address}`"
-            f"\n📅 *Détecté le* : {date_detect}"
-            f"\n👥 *Holders* : {holders_str} ➡️ {holders_updated}"
-            f"\n🔟 *Top10* : {top10_str} ➡️ {top_updated:.2f}%"
-        )
+            return (
+                f"\n📌 *Token address* : `{token_address}`"
+                f"\n🕵️‍♂️ *Détecté le* : ?"
+                f"\n👥 *Holders* : ?"
+                f"\n🔟 *Top10* : ?"
+            )
 
     except Exception as e:
         print(f"[ERREUR INFOS SUPP] {e}")
         return ""
+
+    
 
 
 
